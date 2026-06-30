@@ -7,14 +7,14 @@ struct RecordingSnapshot: Equatable, Sendable {
     let elapsedSeconds: Double
     let systemLevel: AudioLevel
     let microphoneLevel: AudioLevel
-    let outputDirectory: URL?
+    let outputFile: URL?
 }
 
 actor RecordingCoordinator {
     typealias CapacityProvider = @Sendable (URL) -> Int64
 
     private let capture: any CaptureClient
-    private let exporter: RecordingExporter
+    private let exporter: any RecordingExporting
     private let availableCapacity: CapacityProvider
     private var stateMachine = RecordingStateMachine()
     private var snapshot = RecordingSnapshot(
@@ -22,13 +22,12 @@ actor RecordingCoordinator {
         elapsedSeconds: 0,
         systemLevel: .silence,
         microphoneLevel: .silence,
-        outputDirectory: nil
+        outputFile: nil
     )
     private var snapshotContinuation: AsyncStream<RecordingSnapshot>.Continuation?
     private var eventTask: Task<Void, Never>?
     private var files: RecordingFiles?
-    private var startedAt: Date?
-    private var microphoneName = ""
+    private var outputFile: URL?
     private var pendingSamples: [(CaptureTrack, CMSampleBuffer)] = []
     private var firstPTS: [CaptureTrack: CMTime] = [:]
     private var timeline: FrameTimeline?
@@ -42,7 +41,7 @@ actor RecordingCoordinator {
 
     init(
         capture: any CaptureClient,
-        exporter: RecordingExporter = .init(),
+        exporter: any RecordingExporting = RecordingExporter(),
         availableCapacity: @escaping CapacityProvider = RecordingCoordinator.defaultAvailableCapacity
     ) {
         self.capture = capture
@@ -63,7 +62,7 @@ actor RecordingCoordinator {
     func start(
         root: URL,
         microphoneDeviceID: String?,
-        microphoneName: String
+        microphoneName _: String
     ) async throws {
         if case .completed = stateMachine.state { try stateMachine.transition(to: .idle) }
         if case .failed = stateMachine.state { try stateMachine.transition(to: .idle) }
@@ -74,8 +73,7 @@ actor RecordingCoordinator {
         try stateMachine.transition(to: .preparing)
         let files = try RecordingFiles.create(in: root)
         self.files = files
-        self.startedAt = .now
-        self.microphoneName = microphoneName
+        outputFile = nil
         pendingSamples.removeAll(keepingCapacity: true)
         firstPTS.removeAll(keepingCapacity: true)
         timeline = nil
@@ -230,44 +228,27 @@ actor RecordingCoordinator {
         isFinalizing = false
     }
 
-    private func finalize(error: String?) async {
+    private func finalize(error captureError: String?) async {
         try? systemWriter?.finish()
         try? microphoneWriter?.finish()
         systemWriter = nil
         microphoneWriter = nil
         systemDecoder = nil
         microphoneDecoder = nil
-        guard let files, let startedAt else { return }
-        let exportResult = await exporter.export(files: files)
-        let allSucceeded = exportResult.systemSucceeded
-            && exportResult.microphoneSucceeded
-            && exportResult.mixSucceeded
-        let status: RecordingMetadata.Status = error == nil
-            ? (allSucceeded ? .completed : .partial)
-            : .failed
-        let endedAt = Date.now
-        let metadata = RecordingMetadata(
-            startedAt: startedAt,
-            endedAt: endedAt,
-            durationSeconds: Double(maxWrittenFrames) / 48_000,
-            osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
-            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development",
-            microphoneName: microphoneName,
-            status: status,
-            error: error ?? (allSucceeded ? nil : "One or more audio exports failed.")
-        )
-        if let data = try? JSONEncoder.metadataEncoder.encode(metadata) {
-            try? data.write(to: files.metadataJSON, options: .atomic)
-        }
-
-        if error == nil {
-            if allSucceeded {
+        guard let files else { return }
+        do {
+            outputFile = try await exporter.export(files: files)
+            if captureError == nil {
                 try? stateMachine.transition(to: .completed)
                 publish(state: .completed)
             } else {
-                try? stateMachine.transition(to: .failed(.init(message: "One or more audio exports failed.")))
                 publish(state: stateMachine.state)
             }
+        } catch {
+            if captureError == nil {
+                try? stateMachine.transition(to: .failed(.init(message: "One or more audio exports failed.")))
+            }
+            publish(state: stateMachine.state)
         }
     }
 
@@ -277,7 +258,7 @@ actor RecordingCoordinator {
             elapsedSeconds: Double(maxWrittenFrames) / 48_000,
             systemLevel: snapshot.systemLevel,
             microphoneLevel: snapshot.microphoneLevel,
-            outputDirectory: files?.directory
+            outputFile: outputFile
         )
         snapshotContinuation?.yield(snapshot)
     }
@@ -288,7 +269,7 @@ actor RecordingCoordinator {
             elapsedSeconds: Double(maxWrittenFrames) / 48_000,
             systemLevel: track == .system ? level : snapshot.systemLevel,
             microphoneLevel: track == .microphone ? level : snapshot.microphoneLevel,
-            outputDirectory: files?.directory
+            outputFile: outputFile
         )
         snapshotContinuation?.yield(snapshot)
     }
@@ -305,14 +286,5 @@ actor RecordingCoordinator {
     private static func defaultAvailableCapacity(_ url: URL) -> Int64 {
         let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
         return values?.volumeAvailableCapacityForImportantUsage ?? 0
-    }
-}
-
-private extension JSONEncoder {
-    static var metadataEncoder: JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        return encoder
     }
 }

@@ -25,7 +25,7 @@ final class AppModel {
         elapsedSeconds: 0,
         systemLevel: .silence,
         microphoneLevel: .silence,
-        outputDirectory: nil
+        outputFile: nil
     )
     var microphones: [MicrophoneOption] = []
     var selectedMicrophoneID: String? {
@@ -60,6 +60,7 @@ final class AppModel {
 
     init(coordinator: RecordingCoordinator = RecordingCoordinator(capture: ScreenCaptureClient())) {
         self.coordinator = coordinator
+        try? RecordingFiles.removeStaleSessions()
         if let path = UserDefaults.standard.string(forKey: DefaultsKey.destination) {
             destination = URL(fileURLWithPath: path, isDirectory: true)
         } else {
@@ -165,9 +166,9 @@ final class AppModel {
         Task { await coordinator.stop() }
     }
 
-    func openOutputDirectory() {
-        guard let url = snapshot.outputDirectory else { return }
-        NSWorkspace.shared.open(url)
+    func revealOutputFile() {
+        guard let url = snapshot.outputFile else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     func openPrivacySettings() {

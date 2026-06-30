@@ -21,7 +21,7 @@ final class RecordingCoordinatorTests: XCTestCase {
         XCTAssertEqual(capture.startedMicrophoneID, "mic-123")
         let snapshot = await coordinator.currentSnapshot()
         XCTAssertEqual(snapshot.state, .preparing)
-        XCTAssertNotNil(snapshot.outputDirectory)
+        XCTAssertNil(snapshot.outputFile)
     }
 
     func testStartRejectsDestinationWithLessThan500MB() async throws {

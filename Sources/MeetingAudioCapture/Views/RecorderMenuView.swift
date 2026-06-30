@@ -66,8 +66,8 @@ struct RecorderMenuView: View {
             HStack {
                 primaryControls
                 Spacer()
-                if model.snapshot.outputDirectory != nil {
-                    Button(model.text(.openFolder)) { model.openOutputDirectory() }
+                if model.snapshot.outputFile != nil {
+                    Button(model.text(.openFolder)) { model.revealOutputFile() }
                 }
             }
 

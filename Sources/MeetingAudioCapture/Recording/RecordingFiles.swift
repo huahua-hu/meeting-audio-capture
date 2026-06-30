@@ -13,13 +13,6 @@ struct RecordingFiles: Equatable, Sendable {
     let outputDirectory: URL
     let filenameStem: String
 
-    // Transitional aliases retained until the exporter and coordinator migrate.
-    var directory: URL { sessionDirectory }
-    var systemM4A: URL { systemTemporaryM4A }
-    var microphoneM4A: URL { microphoneTemporaryM4A }
-    var mixedM4A: URL { mixedTemporaryM4A }
-    var metadataJSON: URL { sessionDirectory.appending(path: "metadata.json") }
-
     static func create(
         in outputDirectory: URL,
         temporaryRoot: URL = FileManager.default.temporaryDirectory,
@@ -92,21 +85,4 @@ struct RecordingFiles: Equatable, Sendable {
             try fileManager.removeItem(at: container)
         }
     }
-}
-
-struct RecordingMetadata: Codable, Equatable, Sendable {
-    enum Status: String, Codable, Sendable {
-        case completed
-        case partial
-        case failed
-    }
-
-    let startedAt: Date
-    let endedAt: Date
-    let durationSeconds: Double
-    let osVersion: String
-    let appVersion: String
-    let microphoneName: String
-    let status: Status
-    let error: String?
 }
