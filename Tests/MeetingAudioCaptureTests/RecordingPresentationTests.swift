@@ -25,4 +25,29 @@ final class RecordingPresentationTests: XCTestCase {
         XCTAssertEqual(RecordingPresentation.stateLabel(.paused, language: .simplifiedChinese), "已暂停")
         XCTAssertEqual(RecordingPresentation.stateLabel(.stopping, language: .simplifiedChinese), "正在保存…")
     }
+
+    func testMapsRecordingStatesToQuietMenuBarIndicators() {
+        XCTAssertEqual(
+            RecordingPresentation.menuBarIndicator(.idle),
+            MenuBarIndicator(symbolName: "waveform", badge: .none)
+        )
+        for state in [RecordingState.preparing, .recording, .stopping] {
+            XCTAssertEqual(
+                RecordingPresentation.menuBarIndicator(state),
+                MenuBarIndicator(symbolName: "waveform", badge: .dot)
+            )
+        }
+        XCTAssertEqual(
+            RecordingPresentation.menuBarIndicator(.paused),
+            MenuBarIndicator(symbolName: "waveform", badge: .pause)
+        )
+        XCTAssertEqual(
+            RecordingPresentation.menuBarIndicator(.completed),
+            MenuBarIndicator(symbolName: "waveform", badge: .none)
+        )
+        XCTAssertEqual(
+            RecordingPresentation.menuBarIndicator(.failed(.init(message: "No audio"))),
+            MenuBarIndicator(symbolName: "exclamationmark.triangle", badge: .warning)
+        )
+    }
 }

@@ -88,19 +88,8 @@ final class AppModel {
         }
     }
 
-    var isActive: Bool {
-        switch snapshot.state {
-        case .preparing, .recording, .paused, .stopping: true
-        default: false
-        }
-    }
-
-    var menuBarIcon: String {
-        switch snapshot.state {
-        case .recording, .paused: "record.circle.fill"
-        case .failed: "exclamationmark.triangle"
-        default: "waveform"
-        }
+    var menuBarIndicator: MenuBarIndicator {
+        RecordingPresentation.menuBarIndicator(snapshot.state)
     }
 
     func refreshMicrophones() {
