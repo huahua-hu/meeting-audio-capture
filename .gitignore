@@ -7,6 +7,7 @@ xcuserdata/
 *.m4a
 *.caf
 *.wav
+Meeting-*.mp4
 Recording-*/
 *.p12
 *.mobileprovision
