@@ -24,10 +24,19 @@
 ```bash
 make test
 make app
+make dmg
 make run
 ```
 
-生成的应用位于 `.build/MeetingAudioCapture.app`。本项目当前采用本地临时签名，仅发布源码，不提供 Apple 公证安装包。
+生成的应用位于 `.build/MeetingAudioCapture.app`，拖拽安装盘位于 `.build/MeetingAudioCapture-<版本号>.dmg`。
+
+## 安装
+
+1. 双击打开 `MeetingAudioCapture-<版本号>.dmg`。
+2. 将 MeetingAudioCapture 图标拖到 Applications 文件夹。
+3. 从“应用程序”中启动 MeetingAudioCapture。
+
+本项目当前采用本地临时签名，尚未经过 Apple 公证。如果 macOS 阻止首次启动，请按住 Control 点击应用、选择“打开”，然后确认启动。应用运行后只显示在菜单栏，不显示 Dock 图标。
 
 ## 使用
 

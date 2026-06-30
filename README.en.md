@@ -24,10 +24,19 @@ An open-source, local-only macOS menu-bar app. It uses ScreenCaptureKit to recor
 ```bash
 make test
 make app
+make dmg
 make run
 ```
 
-The app bundle is created at `.build/MeetingAudioCapture.app`. It is ad-hoc signed for local development. This release is source-only and is not Apple-notarized.
+The app bundle is created at `.build/MeetingAudioCapture.app`; the drag-to-install disk image is created at `.build/MeetingAudioCapture-<version>.dmg`.
+
+## Installation
+
+1. Open `MeetingAudioCapture-<version>.dmg`.
+2. Drag MeetingAudioCapture onto the Applications folder.
+3. Start MeetingAudioCapture from Applications.
+
+The app is currently ad-hoc signed and is not Apple-notarized. If macOS blocks the first launch, Control-click the app, choose **Open**, and confirm. Once running, the app appears only in the menu bar and does not show a Dock icon.
 
 ## Usage
 
