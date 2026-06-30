@@ -1,43 +1,96 @@
 import Foundation
 
 struct RecordingFiles: Equatable, Sendable {
-    let directory: URL
+    private static let temporaryContainerName = "MeetingAudioCapture"
+
+    let sessionDirectory: URL
     let systemTemporaryCAF: URL
     let microphoneTemporaryCAF: URL
-    let systemM4A: URL
-    let microphoneM4A: URL
-    let mixedM4A: URL
-    let metadataJSON: URL
+    let systemTemporaryM4A: URL
+    let microphoneTemporaryM4A: URL
+    let mixedTemporaryM4A: URL
+    let temporaryMP4: URL
+    let outputDirectory: URL
+    let filenameStem: String
+
+    // Transitional aliases retained until the exporter and coordinator migrate.
+    var directory: URL { sessionDirectory }
+    var systemM4A: URL { systemTemporaryM4A }
+    var microphoneM4A: URL { microphoneTemporaryM4A }
+    var mixedM4A: URL { mixedTemporaryM4A }
+    var metadataJSON: URL { sessionDirectory.appending(path: "metadata.json") }
 
     static func create(
-        in root: URL,
+        in outputDirectory: URL,
+        temporaryRoot: URL = FileManager.default.temporaryDirectory,
         now: Date = .now,
-        id: String = String(UUID().uuidString.prefix(4))
+        timeZone: TimeZone = .current,
+        id: String = UUID().uuidString,
+        fileManager: FileManager = .default
     ) throws -> RecordingFiles {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
+        formatter.timeZone = timeZone
         formatter.dateFormat = "yyyyMMdd-HHmmss"
 
-        let directory = root.appending(
-            path: "Recording-\(formatter.string(from: now))-\(id)",
+        try fileManager.createDirectory(
+            at: outputDirectory,
+            withIntermediateDirectories: true
+        )
+        let container = temporaryRoot.appending(
+            path: temporaryContainerName,
             directoryHint: .isDirectory
         )
-        try FileManager.default.createDirectory(
-            at: directory,
+        try fileManager.createDirectory(at: container, withIntermediateDirectories: true)
+        let sessionDirectory = container.appending(path: id, directoryHint: .isDirectory)
+        try fileManager.createDirectory(
+            at: sessionDirectory,
             withIntermediateDirectories: false
         )
 
         return RecordingFiles(
-            directory: directory,
-            systemTemporaryCAF: directory.appending(path: ".system.caf"),
-            microphoneTemporaryCAF: directory.appending(path: ".microphone.caf"),
-            systemM4A: directory.appending(path: "system.m4a"),
-            microphoneM4A: directory.appending(path: "microphone.m4a"),
-            mixedM4A: directory.appending(path: "mixed.m4a"),
-            metadataJSON: directory.appending(path: "metadata.json")
+            sessionDirectory: sessionDirectory,
+            systemTemporaryCAF: sessionDirectory.appending(path: "system.caf"),
+            microphoneTemporaryCAF: sessionDirectory.appending(path: "microphone.caf"),
+            systemTemporaryM4A: sessionDirectory.appending(path: "system.m4a"),
+            microphoneTemporaryM4A: sessionDirectory.appending(path: "microphone.m4a"),
+            mixedTemporaryM4A: sessionDirectory.appending(path: "mixed.m4a"),
+            temporaryMP4: sessionDirectory.appending(path: "output.mp4"),
+            outputDirectory: outputDirectory,
+            filenameStem: "Meeting-\(formatter.string(from: now))"
         )
+    }
+
+    func nextOutputURL(fileManager: FileManager = .default) -> URL {
+        var suffix = 1
+        while true {
+            let name = suffix == 1 ? filenameStem : "\(filenameStem)-\(suffix)"
+            let candidate = outputDirectory.appending(path: "\(name).mp4")
+            if !fileManager.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+            suffix += 1
+        }
+    }
+
+    func removeTemporarySession(fileManager: FileManager = .default) throws {
+        if fileManager.fileExists(atPath: sessionDirectory.path) {
+            try fileManager.removeItem(at: sessionDirectory)
+        }
+    }
+
+    static func removeStaleSessions(
+        temporaryRoot: URL = FileManager.default.temporaryDirectory,
+        fileManager: FileManager = .default
+    ) throws {
+        let container = temporaryRoot.appending(
+            path: temporaryContainerName,
+            directoryHint: .isDirectory
+        )
+        if fileManager.fileExists(atPath: container.path) {
+            try fileManager.removeItem(at: container)
+        }
     }
 }
 
