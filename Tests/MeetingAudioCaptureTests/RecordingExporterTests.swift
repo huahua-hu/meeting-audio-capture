@@ -4,6 +4,10 @@ import Foundation
 import XCTest
 
 final class RecordingExporterTests: XCTestCase {
+    private enum CleanupFailure: Error {
+        case expected
+    }
+
     func testExportsOneMP4WithDefaultMixAndIndependentTracks() async throws {
         let root = try makeRoot()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -48,6 +52,22 @@ final class RecordingExporterTests: XCTestCase {
             XCTAssertTrue(FileManager.default.fileExists(atPath: files.sessionDirectory.path))
             XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: output.path), [])
         }
+    }
+
+    func testCleanupFailureDoesNotDeleteCompletedMP4() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let output = root.appending(path: "output", directoryHint: .isDirectory)
+        let temporary = root.appending(path: "temporary", directoryHint: .isDirectory)
+        let files = try RecordingFiles.create(in: output, temporaryRoot: temporary, id: "CLEANUP")
+        try writeFixture(to: files.systemTemporaryCAF, channels: 2, value: 0.1)
+        try writeFixture(to: files.microphoneTemporaryCAF, channels: 1, value: 0.2)
+        let exporter = RecordingExporter(removeSession: { _ in throw CleanupFailure.expected })
+
+        let outputURL = try await exporter.export(files: files)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: outputURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: files.sessionDirectory.path))
     }
 
     private func trackDescriptions(

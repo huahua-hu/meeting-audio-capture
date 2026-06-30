@@ -34,6 +34,16 @@ enum RecordingExportError: Error, LocalizedError, Sendable {
 }
 
 struct RecordingExporter: RecordingExporting, Sendable {
+    private let removeSession: @Sendable (RecordingFiles) throws -> Void
+
+    init(
+        removeSession: @escaping @Sendable (RecordingFiles) throws -> Void = {
+            try $0.removeTemporarySession()
+        }
+    ) {
+        self.removeSession = removeSession
+    }
+
     private struct MuxSource {
         let title: String
         let reader: AVAssetReader
@@ -63,14 +73,14 @@ struct RecordingExporter: RecordingExporting, Sendable {
         let outputURL = files.nextOutputURL()
         do {
             try FileManager.default.moveItem(at: files.temporaryMP4, to: outputURL)
-            try files.removeTemporarySession()
-            return outputURL
         } catch {
             if FileManager.default.fileExists(atPath: outputURL.path) {
                 try? FileManager.default.removeItem(at: outputURL)
             }
             throw RecordingExportError.exportFailed("final MP4")
         }
+        try? removeSession(files)
+        return outputURL
     }
 
     private func exportTrack(source: URL, destination: URL, name: String) async throws {
