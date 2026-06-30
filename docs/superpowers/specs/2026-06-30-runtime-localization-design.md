@@ -30,7 +30,7 @@ Use a type-safe in-process localization table rather than Apple String Catalog r
 Define:
 
 - `AppLanguage`: `english` and `simplifiedChinese`, with stable persisted raw values.
-- `LocalizedStringKey`: one case for every translatable message or label.
+- `AppTextKey`: one case for every translatable message or label, avoiding a name collision with SwiftUI's `LocalizedStringKey`.
 - `AppLocalizer`: resolves a key for a selected language, supports formatted values, and falls back to English if a Chinese entry is unavailable.
 
 English and Simplified Chinese translations live together in a focused localization source file. Views request text by key and must not contain new user-facing string literals.
@@ -61,4 +61,3 @@ Automated tests verify:
 - language selection does not alter recording filenames or metadata schema.
 
 After implementation, run the complete test suite, create a Release app bundle, verify its ad-hoc signature, switch languages during an active short recording, and confirm the audio outputs remain valid.
-

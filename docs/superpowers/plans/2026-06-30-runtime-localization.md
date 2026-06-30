@@ -4,7 +4,7 @@
 
 **Goal:** Add an immediately switchable, persisted English and Simplified Chinese interface while keeping English as the first-launch default.
 
-**Architecture:** A type-safe `AppLanguage` and `LocalizedStringKey` feed a single `AppLocalizer` table. `AppModel` owns and persists the language, while SwiftUI views resolve every user-facing label from the selected language without changing audio or file behavior.
+**Architecture:** A type-safe `AppLanguage` and `AppTextKey` feed a single `AppLocalizer` table. `AppModel` owns and persists the language, while SwiftUI views resolve every user-facing label from the selected language without changing audio or file behavior.
 
 **Tech Stack:** Swift 6, SwiftUI, Observation, Foundation `UserDefaults`, XCTest.
 
@@ -28,7 +28,7 @@
 - Create: `Tests/MeetingAudioCaptureTests/AppLocalizationTests.swift`
 
 **Interfaces:**
-- Produces: `AppLanguage`, `LocalizedStringKey`, `AppLocalizer.text(_:language:)`, and `AppLocalizer.format(_:language:_:)`.
+- Produces: `AppLanguage`, `AppTextKey`, `AppLocalizer.text(_:language:)`, and `AppLocalizer.format(_:language:_:)`.
 - Consumes: Foundation only.
 
 - [ ] **Step 1: Write failing tests for defaults, completeness, fallback, and formatting**
@@ -40,7 +40,7 @@ XCTAssertEqual(AppLanguage.defaultLanguage, .english)
 XCTAssertEqual(AppLanguage(rawValue: "zh-Hans"), .simplifiedChinese)
 XCTAssertEqual(AppLocalizer.text(.startRecording, language: .english), "Start Recording")
 XCTAssertEqual(AppLocalizer.text(.startRecording, language: .simplifiedChinese), "开始录音")
-for key in LocalizedStringKey.allCases {
+for key in AppTextKey.allCases {
     XCTAssertFalse(AppLocalizer.text(key, language: .english).isEmpty)
     XCTAssertFalse(AppLocalizer.text(key, language: .simplifiedChinese).isEmpty)
 }
@@ -54,7 +54,7 @@ XCTAssertEqual(
 
 Run: `swift test --filter AppLocalizationTests`
 
-Expected: FAIL because `AppLanguage`, `LocalizedStringKey`, and `AppLocalizer` do not exist.
+Expected: FAIL because `AppLanguage`, `AppTextKey`, and `AppLocalizer` do not exist.
 
 - [ ] **Step 3: Implement the localization types and complete table**
 
@@ -68,7 +68,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
 }
 
-enum LocalizedStringKey: CaseIterable, Sendable {
+enum AppTextKey: CaseIterable, Sendable {
     case language, english, simplifiedChinese
     case ready, checkingAudio, recording, paused, saving, saved, failed
     case systemAudio, microphone, noSignal, systemDefault, saveTo, choose
@@ -107,7 +107,7 @@ git commit -m "feat: add runtime English and Chinese localization"
 - Create: `Tests/MeetingAudioCaptureTests/AppLanguagePreferenceTests.swift`
 
 **Interfaces:**
-- Consumes: Task 1 `AppLanguage`, `LocalizedStringKey`, and `AppLocalizer`.
+- Consumes: Task 1 `AppLanguage`, `AppTextKey`, and `AppLocalizer`.
 - Produces: `AppModel.language`, `AppModel.text(_:)`, immediate view refresh, and persisted language selection.
 
 - [ ] **Step 1: Write failing preference and presentation tests**
@@ -132,7 +132,7 @@ Expected: FAIL because persisted language resolution and language-aware state la
 Add `AppLanguagePreference` with key `appLanguage`, `load(from:)`, and `save(_:to:)`. Add `var language: AppLanguage` to `AppModel`, initialize it from the preference, save in `didSet`, and expose:
 
 ```swift
-func text(_ key: LocalizedStringKey) -> String {
+func text(_ key: AppTextKey) -> String {
     AppLocalizer.text(key, language: language)
 }
 ```
@@ -205,4 +205,3 @@ Confirm `/Users/yang/Desktop/test-projects/meeting-audio-capture` is clean, stop
 - [ ] **Step 5: Manual smoke test**
 
 Switch English → 简体中文 → English, restart the app and confirm the last selection persists, then switch language during a short recording and verify recording state and audio files remain valid.
-
