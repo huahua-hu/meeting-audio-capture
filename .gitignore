@@ -1,0 +1,11 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.m4a
+*.caf
+*.wav
+Recording-*/
+*.p12
+*.mobileprovision
