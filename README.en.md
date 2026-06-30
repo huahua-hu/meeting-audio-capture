@@ -32,11 +32,12 @@ The app bundle is created at `.build/MeetingAudioCapture.app`. It is ad-hoc sign
 ## Usage
 
 1. Start the app and click the waveform icon in the menu bar.
-2. Select a microphone and destination folder.
-3. Click **Start Recording**.
-4. Grant Microphone and Screen & System Audio Recording access when macOS asks. A restart may be required after first authorization.
-5. Confirm both meters respond before starting the meeting.
-6. Stop recording, wait for export to finish, and open the recording folder.
+2. The first launch defaults to English. Use `Language` at the bottom of the menu to select `简体中文`; the interface updates immediately and remembers the selection.
+3. Select a microphone and destination folder.
+4. Click **Start Recording**.
+5. Grant Microphone and Screen & System Audio Recording access when macOS asks. A restart may be required after first authorization.
+6. Confirm both meters respond before starting the meeting.
+7. Stop recording, wait for export to finish, and open the recording folder.
 
 Each session creates:
 
