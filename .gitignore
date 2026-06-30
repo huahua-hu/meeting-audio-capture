@@ -2,6 +2,7 @@
 .build/
 .swiftpm/
 .worktrees/
+.superpowers/
 DerivedData/
 xcuserdata/
 *.m4a
