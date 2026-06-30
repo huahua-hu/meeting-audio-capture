@@ -10,7 +10,7 @@ struct RecorderMenuView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("MeetingAudioCapture")
                         .font(.headline)
-                    Text(RecordingPresentation.stateLabel(model.snapshot.state))
+                    Text(RecordingPresentation.stateLabel(model.snapshot.state, language: model.language))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -18,13 +18,23 @@ struct RecorderMenuView: View {
                     .font(.system(.body, design: .monospaced))
             }
 
-            AudioLevelView(label: "System Audio", level: model.snapshot.systemLevel, tint: .blue)
-            AudioLevelView(label: "Microphone", level: model.snapshot.microphoneLevel, tint: .green)
+            AudioLevelView(
+                label: model.text(.systemAudio),
+                level: model.snapshot.systemLevel,
+                tint: .blue,
+                noSignalText: model.text(.noSignal)
+            )
+            AudioLevelView(
+                label: model.text(.microphone),
+                level: model.snapshot.microphoneLevel,
+                tint: .green,
+                noSignalText: model.text(.noSignal)
+            )
 
             Divider()
 
-            Picker("Microphone", selection: $model.selectedMicrophoneID) {
-                Text("System Default").tag(nil as String?)
+            Picker(model.text(.microphone), selection: $model.selectedMicrophoneID) {
+                Text(model.text(.systemDefault)).tag(nil as String?)
                 ForEach(model.microphones) { microphone in
                     Text(microphone.name).tag(Optional(microphone.id))
                 }
@@ -33,7 +43,7 @@ struct RecorderMenuView: View {
 
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Save to")
+                    Text(model.text(.saveTo))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(model.destination.path(percentEncoded: false))
@@ -41,7 +51,7 @@ struct RecorderMenuView: View {
                         .truncationMode(.middle)
                 }
                 Spacer()
-                Button("Choose…") { model.chooseDestination() }
+                Button(model.text(.choose)) { model.chooseDestination() }
                     .disabled(!model.canConfigure)
             }
 
@@ -50,28 +60,34 @@ struct RecorderMenuView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
                     .textSelection(.enabled)
-                Button("Open Privacy Settings") { model.openPrivacySettings() }
+                Button(model.text(.openPrivacySettings)) { model.openPrivacySettings() }
             }
 
             HStack {
                 primaryControls
                 Spacer()
                 if model.snapshot.outputDirectory != nil {
-                    Button("Open Folder") { model.openOutputDirectory() }
+                    Button(model.text(.openFolder)) { model.openOutputDirectory() }
                 }
             }
 
-            Text("Record only with required consent and in accordance with applicable laws and meeting policies.")
+            Text(model.text(.consentNotice))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Divider()
+            Picker(model.text(.language), selection: $model.language) {
+                Text(model.text(.english)).tag(AppLanguage.english)
+                Text(model.text(.simplifiedChinese)).tag(AppLanguage.simplifiedChinese)
+            }
+            .pickerStyle(.segmented)
+
             HStack {
-                Button("Refresh Microphones") { model.refreshMicrophones() }
+                Button(model.text(.refreshMicrophones)) { model.refreshMicrophones() }
                     .disabled(!model.canConfigure)
                 Spacer()
-                Button("Quit") { NSApplication.shared.terminate(nil) }
+                Button(model.text(.quit)) { NSApplication.shared.terminate(nil) }
             }
         }
         .padding(14)
@@ -82,23 +98,23 @@ struct RecorderMenuView: View {
     private var primaryControls: some View {
         switch model.snapshot.state {
         case .idle, .completed, .failed:
-            Button("Start Recording") { model.start() }
+            Button(model.text(.startRecording)) { model.start() }
                 .keyboardShortcut(.defaultAction)
         case .preparing:
             ProgressView()
                 .controlSize(.small)
-            Text("Waiting for both audio tracks…")
+            Text(model.text(.waitingForTracks))
                 .foregroundStyle(.secondary)
         case .recording:
-            Button("Pause") { model.pause() }
-            Button("Stop") { model.stop() }
+            Button(model.text(.pause)) { model.pause() }
+            Button(model.text(.stop)) { model.stop() }
         case .paused:
-            Button("Resume") { model.resume() }
-            Button("Stop") { model.stop() }
+            Button(model.text(.resume)) { model.resume() }
+            Button(model.text(.stop)) { model.stop() }
         case .stopping:
             ProgressView()
                 .controlSize(.small)
-            Text("Saving files…")
+            Text(model.text(.savingFiles))
                 .foregroundStyle(.secondary)
         }
     }

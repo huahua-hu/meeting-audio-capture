@@ -8,6 +8,22 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
 }
 
+enum AppLanguagePreference {
+    static let key = "appLanguage"
+
+    static func load(from defaults: UserDefaults = .standard) -> AppLanguage {
+        guard let rawValue = defaults.string(forKey: key),
+              let language = AppLanguage(rawValue: rawValue) else {
+            return .defaultLanguage
+        }
+        return language
+    }
+
+    static func save(_ language: AppLanguage, to defaults: UserDefaults = .standard) {
+        defaults.set(language.rawValue, forKey: key)
+    }
+}
+
 enum AppTextKey: CaseIterable, Sendable {
     case language
     case english

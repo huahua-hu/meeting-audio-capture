@@ -8,14 +8,21 @@ final class RecordingPresentationTests: XCTestCase {
     }
 
     func testProvidesDistinctStateLabels() {
-        XCTAssertEqual(RecordingPresentation.stateLabel(.idle), "Ready")
-        XCTAssertEqual(RecordingPresentation.stateLabel(.preparing), "Checking audio…")
-        XCTAssertEqual(RecordingPresentation.stateLabel(.recording), "Recording")
-        XCTAssertEqual(RecordingPresentation.stateLabel(.paused), "Paused")
-        XCTAssertEqual(RecordingPresentation.stateLabel(.completed), "Saved")
+        XCTAssertEqual(RecordingPresentation.stateLabel(.idle, language: .english), "Ready")
+        XCTAssertEqual(RecordingPresentation.stateLabel(.preparing, language: .english), "Checking audio…")
+        XCTAssertEqual(RecordingPresentation.stateLabel(.recording, language: .english), "Recording")
+        XCTAssertEqual(RecordingPresentation.stateLabel(.paused, language: .english), "Paused")
+        XCTAssertEqual(RecordingPresentation.stateLabel(.completed, language: .english), "Saved")
         XCTAssertEqual(
-            RecordingPresentation.stateLabel(.failed(.init(message: "No audio"))),
+            RecordingPresentation.stateLabel(.failed(.init(message: "No audio")), language: .english),
             "Failed"
         )
+    }
+
+    func testProvidesChineseStateLabels() {
+        XCTAssertEqual(RecordingPresentation.stateLabel(.idle, language: .simplifiedChinese), "就绪")
+        XCTAssertEqual(RecordingPresentation.stateLabel(.recording, language: .simplifiedChinese), "录音中")
+        XCTAssertEqual(RecordingPresentation.stateLabel(.paused, language: .simplifiedChinese), "已暂停")
+        XCTAssertEqual(RecordingPresentation.stateLabel(.stopping, language: .simplifiedChinese), "正在保存…")
     }
 }

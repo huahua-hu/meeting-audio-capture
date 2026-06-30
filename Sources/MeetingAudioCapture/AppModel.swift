@@ -18,6 +18,7 @@ final class AppModel {
 
     private let coordinator: RecordingCoordinator
     private var observationTask: Task<Void, Never>?
+    private var displayError: DisplayError?
 
     var snapshot = RecordingSnapshot(
         state: .idle,
@@ -33,7 +34,29 @@ final class AppModel {
     var destination: URL {
         didSet { UserDefaults.standard.set(destination.path, forKey: DefaultsKey.destination) }
     }
-    var errorMessage: String?
+    var language: AppLanguage {
+        didSet { AppLanguagePreference.save(language) }
+    }
+
+    var errorMessage: String? {
+        guard let displayError else { return nil }
+        switch displayError {
+        case .permissionDenied:
+            return text(.permissionDenied)
+        case .noDisplay:
+            return text(.noDisplay)
+        case let .captureSetup(details):
+            return AppLocalizer.format(.captureSetupFormat, language: language, details)
+        case .insufficientSpace:
+            return text(.insufficientSpace)
+        case .exportFailed:
+            return text(.exportFailed)
+        case .unexpectedCaptureStop:
+            return text(.unexpectedCaptureStop)
+        case let .system(details):
+            return AppLocalizer.format(.genericErrorFormat, language: language, details)
+        }
+    }
 
     init(coordinator: RecordingCoordinator = RecordingCoordinator(capture: ScreenCaptureClient())) {
         self.coordinator = coordinator
@@ -44,8 +67,13 @@ final class AppModel {
             destination = documents.appending(path: "MeetingAudioCapture", directoryHint: .isDirectory)
         }
         selectedMicrophoneID = UserDefaults.standard.string(forKey: DefaultsKey.microphoneID)
+        language = AppLanguagePreference.load()
         refreshMicrophones()
         observeSnapshots()
+    }
+
+    func text(_ key: AppTextKey) -> String {
+        AppLocalizer.text(key, language: language)
     }
 
     var selectedMicrophoneName: String {
@@ -99,11 +127,11 @@ final class AppModel {
     }
 
     func start() {
-        errorMessage = nil
+        displayError = nil
         do {
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
         } catch {
-            errorMessage = error.localizedDescription
+            displayError = .system(error.localizedDescription)
             return
         }
         Task {
@@ -114,7 +142,7 @@ final class AppModel {
                     microphoneName: selectedMicrophoneName
                 )
             } catch {
-                errorMessage = error.localizedDescription
+                displayError = displayError(for: error)
             }
         }
     }
@@ -122,14 +150,14 @@ final class AppModel {
     func pause() {
         Task {
             do { try await coordinator.pause() }
-            catch { errorMessage = error.localizedDescription }
+            catch { displayError = displayError(for: error) }
         }
     }
 
     func resume() {
         Task {
             do { try await coordinator.resume() }
-            catch { errorMessage = error.localizedDescription }
+            catch { displayError = displayError(for: error) }
         }
     }
 
@@ -154,9 +182,55 @@ final class AppModel {
                 guard !Task.isCancelled else { return }
                 snapshot = next
                 if case let .failed(failure) = next.state {
-                    errorMessage = failure.message
+                    displayError = displayError(forMessage: failure.message)
                 }
             }
         }
+    }
+
+    private func displayError(for error: Error) -> DisplayError {
+        if let captureFailure = error as? CaptureFailure {
+            switch captureFailure {
+            case .permissionDenied:
+                return .permissionDenied
+            case .noDisplayAvailable:
+                return .noDisplay
+            case let .setupFailed(details):
+                return .captureSetup(details)
+            }
+        }
+        if let recordingFailure = error as? RecordingFailure {
+            return displayError(forMessage: recordingFailure.message)
+        }
+        return .system(error.localizedDescription)
+    }
+
+    private func displayError(forMessage message: String) -> DisplayError {
+        switch message {
+        case "At least 500 MB of free space is required.":
+            return .insufficientSpace
+        case "One or more audio exports failed.":
+            return .exportFailed
+        case "Audio capture stopped unexpectedly.":
+            return .unexpectedCaptureStop
+        default:
+            if message.hasPrefix("Unable to start audio capture: ") {
+                return .captureSetup(String(message.dropFirst("Unable to start audio capture: ".count)))
+            }
+            if message.contains("Recording permission was denied") {
+                return .permissionDenied
+            }
+            return .system(message)
+        }
+    }
+
+    private enum DisplayError {
+        case permissionDenied
+        case noDisplay
+        case captureSetup(String)
+        case insufficientSpace
+        case exportFailed
+        case unexpectedCaptureStop
+        case system(String)
     }
 }

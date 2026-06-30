@@ -4,6 +4,7 @@ struct AudioLevelView: View {
     let label: String
     let level: AudioLevel
     let tint: Color
+    let noSignalText: String
 
     private var normalized: Double {
         guard level.peakDBFS.isFinite else { return 0 }
@@ -15,14 +16,14 @@ struct AudioLevelView: View {
             HStack {
                 Text(label)
                 Spacer()
-                Text(level.peakDBFS.isFinite ? "\(Int(level.peakDBFS.rounded())) dBFS" : "No signal")
+                Text(level.peakDBFS.isFinite ? "\(Int(level.peakDBFS.rounded())) dBFS" : noSignalText)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
             ProgressView(value: normalized)
                 .tint(tint)
                 .accessibilityLabel(label)
-                .accessibilityValue(level.peakDBFS.isFinite ? "\(Int(level.peakDBFS.rounded())) decibels full scale" : "No signal")
+                .accessibilityValue(level.peakDBFS.isFinite ? "\(Int(level.peakDBFS.rounded())) dBFS" : noSignalText)
         }
     }
 }

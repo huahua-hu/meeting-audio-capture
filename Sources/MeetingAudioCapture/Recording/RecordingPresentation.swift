@@ -6,15 +6,16 @@ enum RecordingPresentation {
         return String(format: "%02d:%02d:%02d", total / 3_600, (total % 3_600) / 60, total % 60)
     }
 
-    static func stateLabel(_ state: RecordingState) -> String {
-        switch state {
-        case .idle: "Ready"
-        case .preparing: "Checking audio…"
-        case .recording: "Recording"
-        case .paused: "Paused"
-        case .stopping: "Saving…"
-        case .completed: "Saved"
-        case .failed: "Failed"
+    static func stateLabel(_ state: RecordingState, language: AppLanguage) -> String {
+        let key: AppTextKey = switch state {
+        case .idle: .ready
+        case .preparing: .checkingAudio
+        case .recording: .recording
+        case .paused: .paused
+        case .stopping: .saving
+        case .completed: .saved
+        case .failed: .failed
         }
+        return AppLocalizer.text(key, language: language)
     }
 }
