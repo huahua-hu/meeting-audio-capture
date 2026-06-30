@@ -2,7 +2,7 @@ import AVFAudio
 import CoreMedia
 import Foundation
 
-enum AudioSampleDecoder {
+final class AudioSampleDecoder {
     enum DecodeError: Error {
         case missingFormat
         case invalidBuffer
@@ -10,10 +10,15 @@ enum AudioSampleDecoder {
         case conversionFailed(String)
     }
 
-    static func decode(
-        _ sampleBuffer: CMSampleBuffer,
-        targetFormat: AVAudioFormat
-    ) throws -> AVAudioPCMBuffer {
+    let targetFormat: AVAudioFormat
+    private var converter: AVAudioConverter?
+    private var converterSourceFormat: AVAudioFormat?
+
+    init(targetFormat: AVAudioFormat) {
+        self.targetFormat = targetFormat
+    }
+
+    func decode(_ sampleBuffer: CMSampleBuffer) throws -> AVAudioPCMBuffer {
         guard let description = CMSampleBufferGetFormatDescription(sampleBuffer) else {
             throw DecodeError.missingFormat
         }
@@ -26,18 +31,27 @@ enum AudioSampleDecoder {
             ) else {
                 throw DecodeError.invalidBuffer
             }
-            return try convert(source, to: targetFormat)
+            return try decodePCM(source)
         }
     }
 
-    private static func convert(
-        _ source: AVAudioPCMBuffer,
-        to targetFormat: AVAudioFormat
-    ) throws -> AVAudioPCMBuffer {
+    func decodePCM(_ source: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
+        if formatsMatch(source.format, targetFormat) {
+            return try copy(source)
+        }
+
+        if converter == nil || converterSourceFormat?.isEqual(source.format) != true {
+            guard let newConverter = AVAudioConverter(from: source.format, to: targetFormat) else {
+                throw DecodeError.allocationFailed
+            }
+            converter = newConverter
+            converterSourceFormat = source.format
+        }
+        guard let converter else { throw DecodeError.allocationFailed }
+
         let ratio = targetFormat.sampleRate / source.format.sampleRate
-        let capacity = AVAudioFrameCount(ceil(Double(source.frameLength) * ratio)) + 32
-        guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity),
-              let converter = AVAudioConverter(from: source.format, to: targetFormat) else {
+        let capacity = AVAudioFrameCount(ceil(Double(source.frameLength) * ratio)) + 64
+        guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else {
             throw DecodeError.allocationFailed
         }
 
@@ -54,6 +68,33 @@ enum AudioSampleDecoder {
         }
         guard status != .error else {
             throw DecodeError.conversionFailed(conversionError?.localizedDescription ?? "Unknown conversion error")
+        }
+        return output
+    }
+
+    private func formatsMatch(_ lhs: AVAudioFormat, _ rhs: AVAudioFormat) -> Bool {
+        lhs.commonFormat == .pcmFormatFloat32
+            && rhs.commonFormat == .pcmFormatFloat32
+            && !lhs.isInterleaved
+            && !rhs.isInterleaved
+            && lhs.sampleRate == rhs.sampleRate
+            && lhs.channelCount == rhs.channelCount
+    }
+
+    private func copy(_ source: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer {
+        guard let output = AVAudioPCMBuffer(
+            pcmFormat: targetFormat,
+            frameCapacity: source.frameLength
+        ), let sourceChannels = source.floatChannelData,
+           let outputChannels = output.floatChannelData else {
+            throw DecodeError.allocationFailed
+        }
+        output.frameLength = source.frameLength
+        for channel in 0..<Int(targetFormat.channelCount) {
+            outputChannels[channel].update(
+                from: sourceChannels[channel],
+                count: Int(source.frameLength)
+            )
         }
         return output
     }

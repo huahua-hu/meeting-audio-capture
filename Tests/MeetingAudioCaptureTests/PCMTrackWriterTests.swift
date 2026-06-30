@@ -4,6 +4,32 @@ import Foundation
 import XCTest
 
 final class PCMTrackWriterTests: XCTestCase {
+    func testIgnoresSingleFrameTimestampJitter() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let url = root.appending(path: "track.caf")
+        let format = try XCTUnwrap(
+            AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 1, interleaved: false)
+        )
+        let first = try buffer(format: format, frames: 4_800, value: 0.5)
+        let second = try buffer(format: format, frames: 4_800, value: 0.25)
+        let writer = try PCMTrackWriter(url: url, format: format)
+
+        try writer.append(first, atFrame: 0)
+        try writer.append(second, atFrame: 4_801)
+        try writer.finish()
+
+        let file = try AVAudioFile(forReading: url)
+        XCTAssertEqual(file.length, 9_600)
+        let contents = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 9_600))
+        try file.read(into: contents)
+        let samples = try XCTUnwrap(contents.floatChannelData?[0])
+        XCTAssertEqual(samples[4_799], 0.5, accuracy: 0.0001)
+        XCTAssertEqual(samples[4_800], 0.25, accuracy: 0.0001)
+    }
+
     func testInsertsSilenceBeforeNextBuffer() throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)

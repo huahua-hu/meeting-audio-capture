@@ -34,6 +34,8 @@ actor RecordingCoordinator {
     private var timeline: FrameTimeline?
     private var systemWriter: PCMTrackWriter?
     private var microphoneWriter: PCMTrackWriter?
+    private var systemDecoder: AudioSampleDecoder?
+    private var microphoneDecoder: AudioSampleDecoder?
     private var lastPresentationTime = CMTime.zero
     private var maxWrittenFrames: AVAudioFramePosition = 0
     private var isFinalizing = false
@@ -79,6 +81,8 @@ actor RecordingCoordinator {
         timeline = nil
         systemWriter = nil
         microphoneWriter = nil
+        systemDecoder = nil
+        microphoneDecoder = nil
         maxWrittenFrames = 0
         lastPresentationTime = .zero
         publish(state: .preparing)
@@ -173,6 +177,8 @@ actor RecordingCoordinator {
             )!
             systemWriter = try PCMTrackWriter(url: files.systemTemporaryCAF, format: systemFormat)
             microphoneWriter = try PCMTrackWriter(url: files.microphoneTemporaryCAF, format: microphoneFormat)
+            systemDecoder = AudioSampleDecoder(targetFormat: systemFormat)
+            microphoneDecoder = AudioSampleDecoder(targetFormat: microphoneFormat)
             let buffered = pendingSamples.sorted {
                 CMSampleBufferGetPresentationTimeStamp($0.1) < CMSampleBufferGetPresentationTimeStamp($1.1)
             }
@@ -193,14 +199,14 @@ actor RecordingCoordinator {
         let targetFrame = timeline.frameIndex(for: pts)
         switch track {
         case .system:
-            guard let writer = systemWriter else { return }
-            let pcm = try AudioSampleDecoder.decode(buffer, targetFormat: writer.format)
+            guard let writer = systemWriter, let decoder = systemDecoder else { return }
+            let pcm = try decoder.decode(buffer)
             try writer.append(pcm, atFrame: targetFrame)
             maxWrittenFrames = max(maxWrittenFrames, writer.writtenFrameCount)
             publish(level: level(from: pcm), for: .system)
         case .microphone:
-            guard let writer = microphoneWriter else { return }
-            let pcm = try AudioSampleDecoder.decode(buffer, targetFormat: writer.format)
+            guard let writer = microphoneWriter, let decoder = microphoneDecoder else { return }
+            let pcm = try decoder.decode(buffer)
             try writer.append(pcm, atFrame: targetFrame)
             maxWrittenFrames = max(maxWrittenFrames, writer.writtenFrameCount)
             publish(level: level(from: pcm), for: .microphone)
@@ -229,6 +235,8 @@ actor RecordingCoordinator {
         try? microphoneWriter?.finish()
         systemWriter = nil
         microphoneWriter = nil
+        systemDecoder = nil
+        microphoneDecoder = nil
         guard let files, let startedAt else { return }
         let exportResult = await exporter.export(files: files)
         let allSucceeded = exportResult.systemSucceeded

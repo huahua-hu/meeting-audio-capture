@@ -11,6 +11,8 @@ final class PCMTrackWriter {
     let format: AVAudioFormat
     private var file: AVAudioFile?
     private(set) var writtenFrameCount: AVAudioFramePosition = 0
+    private var hasWrittenAudio = false
+    private let timestampJitterToleranceFrames: AVAudioFramePosition = 240
 
     init(url: URL, format: AVAudioFormat) throws {
         self.format = format
@@ -40,11 +42,19 @@ final class PCMTrackWriter {
             throw WriterError.incompatibleFormat
         }
 
-        if targetFrame > writtenFrameCount {
-            try writeSilence(frames: targetFrame - writtenFrameCount, to: file)
+        let timestampDelta = targetFrame - writtenFrameCount
+        let effectiveTarget: AVAudioFramePosition
+        if hasWrittenAudio, abs(timestampDelta) <= timestampJitterToleranceFrames {
+            effectiveTarget = writtenFrameCount
+        } else {
+            effectiveTarget = targetFrame
         }
 
-        let overlap = max(0, writtenFrameCount - targetFrame)
+        if effectiveTarget > writtenFrameCount {
+            try writeSilence(frames: effectiveTarget - writtenFrameCount, to: file)
+        }
+
+        let overlap = max(0, writtenFrameCount - effectiveTarget)
         guard overlap < AVAudioFramePosition(buffer.frameLength) else { return }
         let output: AVAudioPCMBuffer
         if overlap == 0 {
@@ -54,6 +64,7 @@ final class PCMTrackWriter {
         }
         try file.write(from: output)
         writtenFrameCount += AVAudioFramePosition(output.frameLength)
+        hasWrittenAudio = true
     }
 
     func finish() throws {
