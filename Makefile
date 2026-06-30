@@ -13,7 +13,9 @@ build:
 app: build
 	rm -rf "$(APP_DIR)"
 	mkdir -p "$(APP_DIR)/Contents/MacOS"
+	mkdir -p "$(APP_DIR)/Contents/Resources"
 	cp Config/Info.plist "$(APP_DIR)/Contents/Info.plist"
+	cp Config/AppIcon.icns "$(APP_DIR)/Contents/Resources/AppIcon.icns"
 	cp "$(BUILD_DIR)/$(APP_NAME)" "$(APP_DIR)/Contents/MacOS/$(APP_NAME)"
 	codesign --force --deep --sign - --entitlements Config/MeetingAudioCapture.entitlements "$(APP_DIR)"
 
