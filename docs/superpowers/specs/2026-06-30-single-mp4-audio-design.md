@@ -76,6 +76,23 @@ Do not place microphone names, operating-system versions, app versions, errors,
 or other device information in the filename or MP4 metadata. Only generic track
 labels and the recording timestamp are stored.
 
+## Menu Bar Status Indicator
+
+Replace the prominent red `record.circle.fill` recording indicator with a
+quiet, monochrome status treatment. The menu bar must still communicate state,
+but it must not flash, pulse, animate, or use red for normal recording states.
+
+- Idle and completed: the standard `waveform` icon.
+- Preparing, recording, and stopping: the `waveform` icon with a small gray
+  filled status dot at its upper-right corner.
+- Paused: the `waveform` icon with a small gray pause mark.
+- Failed: retain the warning icon so an actionable failure is not hidden.
+
+The indicator uses the system secondary/gray appearance so it remains legible
+in both light and dark menu bars. The open menu continues to show the explicit
+localized state label and elapsed time; the subtle icon is not the only source
+of recording-state information.
+
 ## Compatibility
 
 Use the MP4 container with AAC audio at the existing 48 kHz recording timeline.
@@ -116,6 +133,8 @@ Automated tests must cover:
 - deletion of source files after successful finalization;
 - no partial destination file after export failure;
 - narrowly scoped stale-session cleanup;
+- menu bar icon mapping for idle, active, paused, and failed states, including
+  the absence of red and animation for normal recording states;
 - existing pause/resume timeline and boundary-click regression behavior.
 
 Before release, run the full Swift test suite, build the application bundle, and
