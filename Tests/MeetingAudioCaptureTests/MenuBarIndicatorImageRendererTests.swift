@@ -9,14 +9,15 @@ final class MenuBarIndicatorImageRendererTests: XCTestCase {
             for: MenuBarIndicator(symbolName: "waveform", badge: .dot)
         )
 
-        XCTAssertEqual(image.size, NSSize(width: 22, height: 18))
+        XCTAssertEqual(image.size, NSSize(width: 20, height: 18))
         XCTAssertTrue(image.isTemplate)
     }
 
     func testPlacesSmallRecordingDotAtUpperRightCorner() {
+        XCTAssertEqual(MenuBarIndicatorImageRenderer.symbolPointSize, 13)
         XCTAssertEqual(
             MenuBarIndicatorImageRenderer.dotRect,
-            NSRect(x: 18, y: 13, width: 4, height: 4)
+            NSRect(x: 16, y: 13, width: 4, height: 4)
         )
     }
 

@@ -2,8 +2,9 @@ import AppKit
 
 @MainActor
 enum MenuBarIndicatorImageRenderer {
-    static let imageSize = NSSize(width: 22, height: 18)
-    static let dotRect = NSRect(x: 18, y: 13, width: 4, height: 4)
+    static let imageSize = NSSize(width: 20, height: 18)
+    static let symbolPointSize: CGFloat = 13
+    static let dotRect = NSRect(x: 16, y: 13, width: 4, height: 4)
 
     static func image(for indicator: MenuBarIndicator) -> NSImage {
         let image = NSImage(size: imageSize, flipped: false) { bounds in
@@ -20,7 +21,7 @@ enum MenuBarIndicatorImageRenderer {
             systemSymbolName: name,
             accessibilityDescription: nil
         )?.withSymbolConfiguration(
-            NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+            NSImage.SymbolConfiguration(pointSize: symbolPointSize, weight: .regular)
         ) else {
             return
         }
@@ -43,8 +44,8 @@ enum MenuBarIndicatorImageRenderer {
         case .dot:
             NSBezierPath(ovalIn: dotRect).fill()
         case .pause:
-            NSBezierPath(rect: NSRect(x: 16, y: 6, width: 2, height: 6)).fill()
-            NSBezierPath(rect: NSRect(x: 20, y: 6, width: 2, height: 6)).fill()
+            NSBezierPath(rect: NSRect(x: 14, y: 6, width: 2, height: 6)).fill()
+            NSBezierPath(rect: NSRect(x: 18, y: 6, width: 2, height: 6)).fill()
         case .none, .warning:
             break
         }
