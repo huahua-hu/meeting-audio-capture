@@ -11,7 +11,7 @@ Replace the composite SwiftUI label with one template `NSImage` generated for ea
 The visual states remain intentionally subtle:
 
 - Idle and completed: waveform only.
-- Preparing, recording, and stopping: waveform with a small gray dot.
+- Preparing, recording, and stopping: waveform with a 4-point gray dot positioned as an upper-right corner badge. The badge sits just outside the waveform strokes with a small gap and does not extend the status item horizontally like a second icon.
 - Paused: waveform with a small gray pause mark.
 - Failed: warning symbol, preserving the current behavior.
 
