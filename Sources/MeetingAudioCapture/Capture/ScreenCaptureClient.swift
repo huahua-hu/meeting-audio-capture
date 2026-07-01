@@ -11,6 +11,14 @@ final class ScreenCaptureClient: NSObject, CaptureClient, SCStreamOutput, SCStre
     private var captureStream: SCStream?
     private var acceptsSamples = false
     private var didStop = false
+    private let permissionProvider: any MicrophonePermissionProviding
+    private lazy var legacyMicrophone = LegacyMicrophoneCapture { [weak self] sampleBuffer in
+        self?.yield(sampleBuffer, track: .microphone)
+    }
+
+    init(permissionProvider: any MicrophonePermissionProviding = SystemMicrophonePermissionProvider()) {
+        self.permissionProvider = permissionProvider
+    }
 
     func events() -> AsyncThrowingStream<CaptureEvent, Error> {
         AsyncThrowingStream { continuation in
@@ -21,11 +29,14 @@ final class ScreenCaptureClient: NSObject, CaptureClient, SCStreamOutput, SCStre
     }
 
     func start(microphoneDeviceID: String?) async throws {
-        guard await AVAudioApplication.requestRecordPermission() else {
+        guard await permissionProvider.requestPermission() else {
             throw CaptureFailure.permissionDenied
         }
 
         do {
+            let strategy = CaptureCapabilities.microphoneStrategy(
+                for: ProcessInfo.processInfo.operatingSystemVersion
+            )
             let content = try await SCShareableContent.current
             guard let display = content.displays.first else {
                 throw CaptureFailure.noDisplayAvailable
@@ -43,21 +54,37 @@ final class ScreenCaptureClient: NSObject, CaptureClient, SCStreamOutput, SCStre
             configuration.excludesCurrentProcessAudio = true
             configuration.sampleRate = 48_000
             configuration.channelCount = 2
-            configuration.captureMicrophone = true
-            configuration.microphoneCaptureDeviceID = microphoneDeviceID
+            if #available(macOS 15.0, *), strategy == .screenCaptureKit {
+                configuration.captureMicrophone = true
+                configuration.microphoneCaptureDeviceID = microphoneDeviceID
+            }
             configuration.width = 2
             configuration.height = 2
             configuration.minimumFrameInterval = CMTime(value: 1, timescale: 1)
 
             let stream = SCStream(filter: filter, configuration: configuration, delegate: self)
             try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: systemQueue)
-            try stream.addStreamOutput(self, type: .microphone, sampleHandlerQueue: microphoneQueue)
+            if #available(macOS 15.0, *), strategy == .screenCaptureKit {
+                try stream.addStreamOutput(self, type: .microphone, sampleHandlerQueue: microphoneQueue)
+            }
             lock.withLock {
                 captureStream = stream
                 acceptsSamples = true
                 didStop = false
             }
             try await stream.startCapture()
+            if strategy == .avCaptureSession {
+                do {
+                    try await legacyMicrophone.start(deviceID: microphoneDeviceID)
+                } catch {
+                    try? await stream.stopCapture()
+                    lock.withLock {
+                        captureStream = nil
+                        acceptsSamples = false
+                    }
+                    throw error
+                }
+            }
         } catch let failure as CaptureFailure {
             throw failure
         } catch {
@@ -85,6 +112,7 @@ final class ScreenCaptureClient: NSObject, CaptureClient, SCStreamOutput, SCStre
         if let stream = state.0 {
             try? await stream.stopCapture()
         }
+        await legacyMicrophone.stop()
         state.1?.finish()
     }
 
@@ -94,21 +122,20 @@ final class ScreenCaptureClient: NSObject, CaptureClient, SCStreamOutput, SCStre
         of outputType: SCStreamOutputType
     ) {
         guard sampleBuffer.isValid else { return }
+        if outputType == .audio {
+            yield(sampleBuffer, track: .system)
+        } else if #available(macOS 15.0, *), outputType == .microphone {
+            yield(sampleBuffer, track: .microphone)
+        }
+    }
+
+    private func yield(_ sampleBuffer: CMSampleBuffer, track: CaptureTrack) {
+        guard sampleBuffer.isValid else { return }
         let state = lock.withLock { () -> (Bool, AsyncThrowingStream<CaptureEvent, Error>.Continuation?) in
             (acceptsSamples, continuation)
         }
         guard state.0 else { return }
-
-        switch outputType {
-        case .audio:
-            state.1?.yield(.sample(track: .system, buffer: sampleBuffer))
-        case .microphone:
-            state.1?.yield(.sample(track: .microphone, buffer: sampleBuffer))
-        case .screen:
-            break
-        @unknown default:
-            break
-        }
+        state.1?.yield(.sample(track: track, buffer: sampleBuffer))
     }
 
     func stream(_ stream: SCStream, didStopWithError error: any Error) {
@@ -118,5 +145,6 @@ final class ScreenCaptureClient: NSObject, CaptureClient, SCStreamOutput, SCStre
         }
         continuation?.yield(.stopped(reason: error.localizedDescription))
         continuation?.finish()
+        Task { await legacyMicrophone.stop() }
     }
 }

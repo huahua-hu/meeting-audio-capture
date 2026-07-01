@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct RecorderMenuView: View {
-    @Bindable var model: AppModel
+    @ObservedObject var model: AppModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {

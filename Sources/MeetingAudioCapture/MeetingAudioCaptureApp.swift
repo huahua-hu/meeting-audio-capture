@@ -3,7 +3,7 @@ import SwiftUI
 
 @main
 struct MeetingAudioCaptureApp: App {
-    @State private var model = AppModel()
+    @StateObject private var model = AppModel()
 
     var body: some Scene {
         MenuBarExtra {

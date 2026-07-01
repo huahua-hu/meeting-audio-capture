@@ -1,16 +1,15 @@
 import AppKit
 import AVFoundation
+import Combine
 import Foundation
-import Observation
 
 struct MicrophoneOption: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
 }
 
-@Observable
 @MainActor
-final class AppModel {
+final class AppModel: ObservableObject {
     private enum DefaultsKey {
         static let destination = "recordingDestination"
         static let microphoneID = "selectedMicrophoneID"
@@ -18,23 +17,23 @@ final class AppModel {
 
     private let coordinator: RecordingCoordinator
     private var observationTask: Task<Void, Never>?
-    private var displayError: DisplayError?
+    @Published private var displayError: DisplayError?
 
-    var snapshot = RecordingSnapshot(
+    @Published var snapshot = RecordingSnapshot(
         state: .idle,
         elapsedSeconds: 0,
         systemLevel: .silence,
         microphoneLevel: .silence,
         outputFile: nil
     )
-    var microphones: [MicrophoneOption] = []
-    var selectedMicrophoneID: String? {
+    @Published var microphones: [MicrophoneOption] = []
+    @Published var selectedMicrophoneID: String? {
         didSet { UserDefaults.standard.set(selectedMicrophoneID, forKey: DefaultsKey.microphoneID) }
     }
-    var destination: URL {
+    @Published var destination: URL {
         didSet { UserDefaults.standard.set(destination.path, forKey: DefaultsKey.destination) }
     }
-    var language: AppLanguage {
+    @Published var language: AppLanguage {
         didSet { AppLanguagePreference.save(language) }
     }
 
@@ -93,12 +92,9 @@ final class AppModel {
     }
 
     func refreshMicrophones() {
-        let discovery = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.microphone],
-            mediaType: .audio,
-            position: .unspecified
-        )
-        microphones = discovery.devices.map { MicrophoneOption(id: $0.uniqueID, name: $0.localizedName) }
+        microphones = AVCaptureDevice.devices(for: .audio).map {
+            MicrophoneOption(id: $0.uniqueID, name: $0.localizedName)
+        }
         if let selectedMicrophoneID, !microphones.contains(where: { $0.id == selectedMicrophoneID }) {
             self.selectedMicrophoneID = nil
         }

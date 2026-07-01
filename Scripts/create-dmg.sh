@@ -4,6 +4,7 @@ set -eu
 APP_PATH=${1:?"usage: create-dmg.sh APP_PATH BACKGROUND_PATH OUTPUT_DIRECTORY"}
 BACKGROUND_PATH=${2:?"usage: create-dmg.sh APP_PATH BACKGROUND_PATH OUTPUT_DIRECTORY"}
 OUTPUT_DIRECTORY=${3:?"usage: create-dmg.sh APP_PATH BACKGROUND_PATH OUTPUT_DIRECTORY"}
+OUTPUT_NAME=${4:-}
 
 for tool in hdiutil ditto osascript; do
     command -v "$tool" >/dev/null 2>&1 || {
@@ -31,7 +32,11 @@ VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$INFO_
 APP_NAME=$(basename "$APP_PATH")
 VOLUME_NAME=MeetingAudioCapture
 mkdir -p "$OUTPUT_DIRECTORY"
-FINAL_DMG="$OUTPUT_DIRECTORY/MeetingAudioCapture-$VERSION.dmg"
+if [ -n "$OUTPUT_NAME" ]; then
+    FINAL_DMG="$OUTPUT_DIRECTORY/$OUTPUT_NAME"
+else
+    FINAL_DMG="$OUTPUT_DIRECTORY/MeetingAudioCapture-$VERSION.dmg"
+fi
 
 WORK_DIRECTORY=$(mktemp -d "${TMPDIR:-/tmp}/MeetingAudioCapture.dmg.XXXXXX")
 STAGING_DIRECTORY="$WORK_DIRECTORY/staging"

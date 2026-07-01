@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "MeetingAudioCapture",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS(.v13)],
     products: [
         .executable(name: "MeetingAudioCapture", targets: ["MeetingAudioCapture"])
     ],
