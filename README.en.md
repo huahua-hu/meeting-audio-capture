@@ -1,12 +1,12 @@
 # MeetingAudioCapture
 
-An open-source, local-only macOS menu-bar app. It uses ScreenCaptureKit to record system output and microphone input into one MP4 containing a playback mix and independently identifiable source tracks for reviewing meetings, interviews, and conversations.
+An open-source, local-only macOS menu-bar app. It uses ScreenCaptureKit to record system output and microphone input into one M4A whose channels can be separated for reviewing meetings, interviews, and conversations.
 
 [中文](README.md)
 
 ## Features
 
-- One MP4 containing default mix, system-audio, and microphone tracks
+- One M4A with system audio on the left and microphone audio on the right
 - Live level meters for both sources
 - Pause, resume, and stop controls
 - Local-only output with temporary sources deleted after successful export
@@ -51,10 +51,10 @@ The app is currently ad-hoc signed and is not Apple-notarized. If macOS blocks t
 Each session creates one file:
 
 ```text
-Meeting-YYYYMMDD-HHmmss.mp4
+Meeting-YYYYMMDD-HHmmss.m4a
 ```
 
-Regular players use the `Mixed` track by default. The MP4 also contains `System Audio` and `Microphone` source tracks that multi-track tools such as VLC and ffmpeg can identify and extract. This version does not include an in-app split command. Recording-time CAF/M4A sources live in the macOS temporary directory and are deleted after the MP4 is finalized successfully.
+The M4A uses 48 kHz stereo AAC: system audio is on the left channel and microphone audio is on the right. Headphone playback therefore separates the sources intentionally so they can be split later; exporting the decoded channels to WAV avoids another lossy encode. This version does not include an in-app split command. Temporary sources are deleted after the M4A is finalized successfully.
 
 The system track captures all system playback, including notifications. Enable Do Not Disturb, close unrelated audio apps, and use headphones before an important meeting.
 
