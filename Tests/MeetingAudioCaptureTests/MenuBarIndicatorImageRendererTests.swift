@@ -21,6 +21,16 @@ final class MenuBarIndicatorImageRendererTests: XCTestCase {
         )
     }
 
+    func testPlacesPauseMarkAtUpperRightCorner() {
+        XCTAssertEqual(
+            MenuBarIndicatorImageRenderer.pauseBarRects,
+            [
+                NSRect(x: 16, y: 12, width: 1, height: 5),
+                NSRect(x: 19, y: 12, width: 1, height: 5),
+            ]
+        )
+    }
+
     func testIdleRecordingAndPausedImagesHaveDistinctPixels() throws {
         let idle = MenuBarIndicatorImageRenderer.image(
             for: MenuBarIndicator(symbolName: "waveform", badge: .none)
