@@ -23,6 +23,11 @@ struct StereoM4AEncoder: Sendable {
             throw StereoM4AEncoderError.invalidMicrophoneFormat
         }
 
+        let systemGain = AudioTrackLeveler.gain(for: try measureSystem(file: systemFile))
+        let microphoneGain = AudioTrackLeveler.gain(for: try measureMicrophone(file: microphoneFile))
+        systemFile.framePosition = 0
+        microphoneFile.framePosition = 0
+
         try? FileManager.default.removeItem(at: destination)
         let settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
@@ -77,11 +82,53 @@ struct StereoM4AEncoder: Sendable {
                 let microphoneSample = frame < Int(microphoneBuffer.frameLength)
                     ? microphoneChannels[0][frame]
                     : 0
-                outputChannels[0][frame] = min(1, max(-1, systemSample))
-                outputChannels[1][frame] = min(1, max(-1, microphoneSample))
+                outputChannels[0][frame] = min(1, max(-1, systemSample * systemGain))
+                outputChannels[1][frame] = min(1, max(-1, microphoneSample * microphoneGain))
             }
             try outputFile.write(from: outputBuffer)
             written += AVAudioFramePosition(requested)
         }
+    }
+
+    private func measureSystem(file: AVAudioFile) throws -> AudioTrackMeasurement {
+        var accumulator = AudioTrackMeasurementAccumulator()
+        file.framePosition = 0
+        while file.framePosition < file.length {
+            let requested = AVAudioFrameCount(
+                min(AVAudioFramePosition(chunkSize), file.length - file.framePosition)
+            )
+            guard let buffer = AVAudioPCMBuffer(
+                pcmFormat: file.processingFormat,
+                frameCapacity: requested
+            ), let channels = buffer.floatChannelData else {
+                throw StereoM4AEncoderError.unableToAllocateBuffer
+            }
+            try file.read(into: buffer, frameCount: requested)
+            for frame in 0..<Int(buffer.frameLength) {
+                try accumulator.add(0.5 * channels[0][frame] + 0.5 * channels[1][frame])
+            }
+        }
+        return accumulator.measurement
+    }
+
+    private func measureMicrophone(file: AVAudioFile) throws -> AudioTrackMeasurement {
+        var accumulator = AudioTrackMeasurementAccumulator()
+        file.framePosition = 0
+        while file.framePosition < file.length {
+            let requested = AVAudioFrameCount(
+                min(AVAudioFramePosition(chunkSize), file.length - file.framePosition)
+            )
+            guard let buffer = AVAudioPCMBuffer(
+                pcmFormat: file.processingFormat,
+                frameCapacity: requested
+            ), let channel = buffer.floatChannelData?[0] else {
+                throw StereoM4AEncoderError.unableToAllocateBuffer
+            }
+            try file.read(into: buffer, frameCount: requested)
+            for frame in 0..<Int(buffer.frameLength) {
+                try accumulator.add(channel[frame])
+            }
+        }
+        return accumulator.measurement
     }
 }

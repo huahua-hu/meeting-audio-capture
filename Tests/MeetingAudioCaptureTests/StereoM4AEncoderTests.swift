@@ -20,9 +20,9 @@ final class StereoM4AEncoderTests: XCTestCase {
         let left = try XCTUnwrap(decoded.floatChannelData?[0])
         let right = try XCTUnwrap(decoded.floatChannelData?[1])
         let count = Int(decoded.frameLength)
-        XCTAssertGreaterThan(amplitude(left, count: count, frequency: 440), 0.20)
+        XCTAssertGreaterThan(amplitude(left, count: count, frequency: 440), 0.06)
         XCTAssertLessThan(amplitude(left, count: count, frequency: 880), 0.03)
-        XCTAssertGreaterThan(amplitude(right, count: count, frequency: 880), 0.35)
+        XCTAssertGreaterThan(amplitude(right, count: count, frequency: 880), 0.06)
         XCTAssertLessThan(amplitude(right, count: count, frequency: 440), 0.03)
     }
 
@@ -42,8 +42,31 @@ final class StereoM4AEncoderTests: XCTestCase {
         let left = try XCTUnwrap(decoded.floatChannelData?[0])
         let right = try XCTUnwrap(decoded.floatChannelData?[1])
         let start = Int(decoded.frameLength * 3 / 4)
-        XCTAssertGreaterThan(rms(left, range: start..<Int(decoded.frameLength)), 0.10)
+        XCTAssertGreaterThan(rms(left, range: start..<Int(decoded.frameLength)), 0.04)
         XCTAssertLessThan(rms(right, range: start..<Int(decoded.frameLength)), 0.02)
+    }
+
+    func testBalancesUnequalTracksAndPreservesPeakHeadroom() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let system = root.appending(path: "system.caf")
+        let microphone = root.appending(path: "microphone.caf")
+        let output = root.appending(path: "output.m4a")
+        try writeTone(to: system, channels: 2, frequency: 440, amplitude: 0.05)
+        try writeTone(to: microphone, channels: 1, frequency: 880, amplitude: 0.9)
+
+        try StereoM4AEncoder().encode(systemCAF: system, microphoneCAF: microphone, destination: output)
+
+        let decoded = try decode(output)
+        let left = try XCTUnwrap(decoded.floatChannelData?[0])
+        let right = try XCTUnwrap(decoded.floatChannelData?[1])
+        let count = Int(decoded.frameLength)
+        let balanceDB = 20 * log10(
+            rms(left, range: 0..<count) / rms(right, range: 0..<count)
+        )
+        XCTAssertEqual(balanceDB, 0, accuracy: 1.0)
+        XCTAssertLessThan(maxAbs(left, count: count), 0.76)
+        XCTAssertLessThan(maxAbs(right, count: count), 0.76)
     }
 
     private func writeSystem(to url: URL, frames: AVAudioFrameCount) throws {
@@ -75,6 +98,33 @@ final class StereoM4AEncoderTests: XCTestCase {
         try file.finish()
     }
 
+    private func writeTone(
+        to url: URL,
+        channels: AVAudioChannelCount,
+        frequency: Double,
+        amplitude: Float
+    ) throws {
+        let format = try XCTUnwrap(
+            AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: 48_000,
+                channels: channels,
+                interleaved: false
+            )
+        )
+        let file = try PCMTrackWriter(url: url, format: format)
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 48_000))
+        buffer.frameLength = 48_000
+        for channel in 0..<Int(channels) {
+            let samples = try XCTUnwrap(buffer.floatChannelData?[channel])
+            for frame in 0..<48_000 {
+                samples[frame] = Float(sin(2 * Double.pi * frequency * Double(frame) / 48_000)) * amplitude
+            }
+        }
+        try file.append(buffer, atFrame: 0)
+        try file.finish()
+    }
+
     private func decode(_ url: URL) throws -> AVAudioPCMBuffer {
         let file = try AVAudioFile(forReading: url)
         let capacity = AVAudioFrameCount(file.length)
@@ -97,6 +147,10 @@ final class StereoM4AEncoderTests: XCTestCase {
     private func rms(_ samples: UnsafePointer<Float>, range: Range<Int>) -> Double {
         let sum = range.reduce(0.0) { $0 + Double(samples[$1] * samples[$1]) }
         return sqrt(sum / Double(range.count))
+    }
+
+    private func maxAbs(_ samples: UnsafePointer<Float>, count: Int) -> Float {
+        (0..<count).reduce(0) { max($0, abs(samples[$1])) }
     }
 
     private func makeRoot() throws -> URL {
