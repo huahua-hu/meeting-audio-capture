@@ -37,6 +37,16 @@ final class BundleConfigurationTests: XCTestCase {
         XCTAssertEqual(plist["LSMinimumSystemVersion"] as? String, "13.0")
     }
 
+    func testInfoPlistDeclaresReleaseVersion() throws {
+        let data = try Data(contentsOf: projectRoot.appending(path: "Config/Info.plist"))
+        let plist = try XCTUnwrap(
+            PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
+        )
+
+        XCTAssertEqual(plist["CFBundleShortVersionString"] as? String, "0.2.0")
+        XCTAssertEqual(plist["CFBundleVersion"] as? String, "2")
+    }
+
     func testMakefileBuildsNamedMacOS13Arm64Artifact() throws {
         let makefile = try String(
             contentsOf: projectRoot.appending(path: "Makefile"),
@@ -46,7 +56,7 @@ final class BundleConfigurationTests: XCTestCase {
         XCTAssertTrue(makefile.contains("dmg-macos13:"))
         XCTAssertTrue(makefile.contains("--triple arm64-apple-macosx13.0"))
         XCTAssertTrue(makefile.contains("MACOS13_APP_DIR := .build/macos13/$(APP_NAME).app"))
-        XCTAssertTrue(makefile.contains("MeetingAudioCapture-0.1.0-macos13-arm64.dmg"))
+        XCTAssertTrue(makefile.contains("MeetingAudioCapture-0.2.0-macos13-arm64.dmg"))
     }
 
     private var projectRoot: URL {

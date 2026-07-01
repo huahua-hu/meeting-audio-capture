@@ -3,7 +3,7 @@ BUILD_DIR := .build/release
 APP_DIR := .build/$(APP_NAME).app
 MACOS13_BUILD_DIR := .build/arm64-apple-macosx/release
 MACOS13_APP_DIR := .build/macos13/$(APP_NAME).app
-MACOS13_DMG := MeetingAudioCapture-0.1.0-macos13-arm64.dmg
+MACOS13_DMG := MeetingAudioCapture-0.2.0-macos13-arm64.dmg
 
 .PHONY: test build app dmg build-macos13 app-macos13 dmg-macos13 run clean
 
