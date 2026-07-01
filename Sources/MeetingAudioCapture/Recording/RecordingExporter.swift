@@ -22,15 +22,20 @@ enum RecordingExportError: Error, LocalizedError, Sendable {
 
 struct RecordingExporter: RecordingExporting, Sendable {
     private let encoder: StereoM4AEncoder
+    private let preserveDiagnostics: @Sendable (RecordingFiles, URL) throws -> URL
     private let removeSession: @Sendable (RecordingFiles) throws -> Void
 
     init(
         encoder: StereoM4AEncoder = StereoM4AEncoder(),
+        preserveDiagnostics: @escaping @Sendable (RecordingFiles, URL) throws -> URL = {
+            try $0.preserveDiagnostics(for: $1)
+        },
         removeSession: @escaping @Sendable (RecordingFiles) throws -> Void = {
             try $0.removeTemporarySession()
         }
     ) {
         self.encoder = encoder
+        self.preserveDiagnostics = preserveDiagnostics
         self.removeSession = removeSession
     }
 
@@ -55,6 +60,7 @@ struct RecordingExporter: RecordingExporting, Sendable {
             }
             throw RecordingExportError.moveFailed
         }
+        _ = try preserveDiagnostics(files, outputURL)
         try? removeSession(files)
         return outputURL
     }

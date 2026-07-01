@@ -69,6 +69,62 @@ struct RecordingFiles: Equatable, Sendable {
         }
     }
 
+    @discardableResult
+    func preserveDiagnostics(
+        for outputURL: URL,
+        fileManager: FileManager = .default
+    ) throws -> URL {
+        let container = outputDirectory.appending(path: ".diagnostics", directoryHint: .isDirectory)
+        let destination = container.appending(
+            path: outputURL.deletingPathExtension().lastPathComponent,
+            directoryHint: .isDirectory
+        )
+        try fileManager.createDirectory(at: container, withIntermediateDirectories: true)
+        let staging = container.appending(
+            path: ".staging-\(UUID().uuidString)",
+            directoryHint: .isDirectory
+        )
+        try fileManager.createDirectory(at: staging, withIntermediateDirectories: false)
+        defer { try? fileManager.removeItem(at: staging) }
+
+        for source in [systemTemporaryCAF, microphoneTemporaryCAF, timelineDiagnosticsJSON] {
+            try fileManager.copyItem(
+                at: source,
+                to: staging.appending(path: source.lastPathComponent)
+            )
+        }
+        try fileManager.moveItem(at: staging, to: destination)
+        for source in [systemTemporaryCAF, microphoneTemporaryCAF, timelineDiagnosticsJSON] {
+            try fileManager.removeItem(at: source)
+        }
+        return destination
+    }
+
+    static func pruneDiagnostics(
+        in outputDirectory: URL,
+        keeping count: Int,
+        fileManager: FileManager = .default
+    ) throws {
+        let container = outputDirectory.appending(path: ".diagnostics", directoryHint: .isDirectory)
+        guard fileManager.fileExists(atPath: container.path) else { return }
+
+        let children = try fileManager.contentsOfDirectory(
+            at: container,
+            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        )
+        let directories = try children.filter {
+            try $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true
+        }.sorted {
+            let left = try $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate ?? .distantPast
+            let right = try $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate ?? .distantPast
+            return left > right
+        }
+        for directory in directories.dropFirst(max(0, count)) {
+            try fileManager.removeItem(at: directory)
+        }
+    }
+
     static func removeStaleSessions(
         temporaryRoot: URL = FileManager.default.temporaryDirectory,
         fileManager: FileManager = .default

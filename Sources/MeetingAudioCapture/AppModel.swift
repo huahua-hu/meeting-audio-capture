@@ -68,6 +68,7 @@ final class AppModel: ObservableObject {
         }
         selectedMicrophoneID = UserDefaults.standard.string(forKey: DefaultsKey.microphoneID)
         language = AppLanguagePreference.load()
+        try? RecordingFiles.pruneDiagnostics(in: destination, keeping: 5)
         refreshMicrophones()
         observeSnapshots()
     }
