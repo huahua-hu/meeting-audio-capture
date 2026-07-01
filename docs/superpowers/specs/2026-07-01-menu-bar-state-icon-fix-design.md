@@ -11,11 +11,13 @@ Replace the composite SwiftUI label with one template `NSImage` generated for ea
 The visual states remain intentionally subtle:
 
 - Idle and completed: waveform only.
-- Preparing, recording, and stopping: waveform with a 4-point gray dot positioned as an upper-right corner badge. The badge sits just outside the waveform strokes with a small gap and does not extend the status item horizontally like a second icon.
+- Preparing, recording, and stopping: waveform with a 4-point gray dot positioned as an upper-right corner badge. The badge sits over the waveform's upper-right edge and does not extend the status item horizontally like a second icon.
 - Paused: waveform with a small gray pause mark.
 - Failed: warning symbol, preserving the current behavior.
 
 All normal-state artwork uses template rendering so macOS controls foreground color for light mode, dark mode, disabled appearance, and menu-bar accessibility. There is no animation or colored recording indicator.
+
+The template canvas is 20 by 18 points. The waveform uses a 13-point SF Symbol configuration so the status item remains compact while preserving recognition. macOS retains control of the status item's outer horizontal padding.
 
 ## Components
 
