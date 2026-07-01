@@ -27,7 +27,7 @@ final class RecordingFilesTests: XCTestCase {
         XCTAssertEqual(files.filenameStem, "Meeting-20260630-120102")
         XCTAssertEqual(files.systemTemporaryCAF.lastPathComponent, "system.caf")
         XCTAssertEqual(files.microphoneTemporaryCAF.lastPathComponent, "microphone.caf")
-        XCTAssertEqual(files.temporaryMP4.lastPathComponent, "output.mp4")
+        XCTAssertEqual(files.temporaryM4A.lastPathComponent, "output.m4a")
         XCTAssertTrue(FileManager.default.fileExists(atPath: files.sessionDirectory.path))
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: output.path), [])
     }
@@ -40,17 +40,17 @@ final class RecordingFilesTests: XCTestCase {
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         let files = try RecordingFiles.create(in: output, temporaryRoot: temporary, id: "TEST")
 
-        XCTAssertEqual(files.nextOutputURL().lastPathComponent, "\(files.filenameStem).mp4")
+        XCTAssertEqual(files.nextOutputURL().lastPathComponent, "\(files.filenameStem).m4a")
         FileManager.default.createFile(
-            atPath: output.appending(path: "\(files.filenameStem).mp4").path,
+            atPath: output.appending(path: "\(files.filenameStem).m4a").path,
             contents: Data()
         )
-        XCTAssertEqual(files.nextOutputURL().lastPathComponent, "\(files.filenameStem)-2.mp4")
+        XCTAssertEqual(files.nextOutputURL().lastPathComponent, "\(files.filenameStem)-2.m4a")
         FileManager.default.createFile(
-            atPath: output.appending(path: "\(files.filenameStem)-2.mp4").path,
+            atPath: output.appending(path: "\(files.filenameStem)-2.m4a").path,
             contents: Data()
         )
-        XCTAssertEqual(files.nextOutputURL().lastPathComponent, "\(files.filenameStem)-3.mp4")
+        XCTAssertEqual(files.nextOutputURL().lastPathComponent, "\(files.filenameStem)-3.m4a")
     }
 
     func testStaleCleanupRemovesOnlyApplicationOwnedSessions() throws {

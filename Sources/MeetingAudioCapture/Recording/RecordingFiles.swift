@@ -6,10 +6,7 @@ struct RecordingFiles: Equatable, Sendable {
     let sessionDirectory: URL
     let systemTemporaryCAF: URL
     let microphoneTemporaryCAF: URL
-    let systemTemporaryM4A: URL
-    let microphoneTemporaryM4A: URL
-    let mixedTemporaryM4A: URL
-    let temporaryMP4: URL
+    let temporaryM4A: URL
     let outputDirectory: URL
     let filenameStem: String
 
@@ -46,10 +43,7 @@ struct RecordingFiles: Equatable, Sendable {
             sessionDirectory: sessionDirectory,
             systemTemporaryCAF: sessionDirectory.appending(path: "system.caf"),
             microphoneTemporaryCAF: sessionDirectory.appending(path: "microphone.caf"),
-            systemTemporaryM4A: sessionDirectory.appending(path: "system.m4a"),
-            microphoneTemporaryM4A: sessionDirectory.appending(path: "microphone.m4a"),
-            mixedTemporaryM4A: sessionDirectory.appending(path: "mixed.m4a"),
-            temporaryMP4: sessionDirectory.appending(path: "output.mp4"),
+            temporaryM4A: sessionDirectory.appending(path: "output.m4a"),
             outputDirectory: outputDirectory,
             filenameStem: "Meeting-\(formatter.string(from: now))"
         )
@@ -59,7 +53,7 @@ struct RecordingFiles: Equatable, Sendable {
         var suffix = 1
         while true {
             let name = suffix == 1 ? filenameStem : "\(filenameStem)-\(suffix)"
-            let candidate = outputDirectory.appending(path: "\(name).mp4")
+            let candidate = outputDirectory.appending(path: "\(name).m4a")
             if !fileManager.fileExists(atPath: candidate.path) {
                 return candidate
             }
