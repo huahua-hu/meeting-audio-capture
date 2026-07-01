@@ -37,6 +37,7 @@ actor RecordingCoordinator {
     private var microphoneDecoder: AudioSampleDecoder?
     private var lastPresentationTime = CMTime.zero
     private var maxWrittenFrames: AVAudioFramePosition = 0
+    private var recordingDiagnostics = RecordingTimelineDiagnostics()
     private var isFinalizing = false
 
     init(
@@ -82,6 +83,7 @@ actor RecordingCoordinator {
         systemDecoder = nil
         microphoneDecoder = nil
         maxWrittenFrames = 0
+        recordingDiagnostics = RecordingTimelineDiagnostics()
         lastPresentationTime = .zero
         publish(state: .preparing)
 
@@ -199,13 +201,23 @@ actor RecordingCoordinator {
         case .system:
             guard let writer = systemWriter, let decoder = systemDecoder else { return }
             let pcm = try decoder.decode(buffer)
-            try writer.append(pcm, atFrame: targetFrame)
+            let appendResult = try writer.append(pcm, atFrame: targetFrame)
+            recordingDiagnostics.system.record(
+                bufferPTSSeconds: CMTimeGetSeconds(pts),
+                expectedFrame: targetFrame,
+                appendResult: appendResult
+            )
             maxWrittenFrames = max(maxWrittenFrames, writer.writtenFrameCount)
             publish(level: level(from: pcm), for: .system)
         case .microphone:
             guard let writer = microphoneWriter, let decoder = microphoneDecoder else { return }
             let pcm = try decoder.decode(buffer)
-            try writer.append(pcm, atFrame: targetFrame)
+            let appendResult = try writer.append(pcm, atFrame: targetFrame)
+            recordingDiagnostics.microphone.record(
+                bufferPTSSeconds: CMTimeGetSeconds(pts),
+                expectedFrame: targetFrame,
+                appendResult: appendResult
+            )
             maxWrittenFrames = max(maxWrittenFrames, writer.writtenFrameCount)
             publish(level: level(from: pcm), for: .microphone)
         }
@@ -236,6 +248,9 @@ actor RecordingCoordinator {
         systemDecoder = nil
         microphoneDecoder = nil
         guard let files else { return }
+        if let data = try? JSONEncoder.diagnosticEncoder.encode(recordingDiagnostics) {
+            try? data.write(to: files.timelineDiagnosticsJSON, options: .atomic)
+        }
         do {
             outputFile = try await exporter.export(files: files)
             if captureError == nil {
@@ -286,5 +301,13 @@ actor RecordingCoordinator {
     private static func defaultAvailableCapacity(_ url: URL) -> Int64 {
         let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
         return values?.volumeAvailableCapacityForImportantUsage ?? 0
+    }
+}
+
+private extension JSONEncoder {
+    static var diagnosticEncoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return encoder
     }
 }

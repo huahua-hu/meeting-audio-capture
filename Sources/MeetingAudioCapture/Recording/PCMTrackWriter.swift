@@ -1,6 +1,11 @@
 import AVFAudio
 import Foundation
 
+struct TrackAppendResult: Equatable, Sendable {
+    let insertedSilenceFrames: AVAudioFramePosition
+    let discardedOverlapFrames: AVAudioFramePosition
+}
+
 final class PCMTrackWriter {
     enum WriterError: Error {
         case alreadyFinished
@@ -33,7 +38,11 @@ final class PCMTrackWriter {
         )
     }
 
-    func append(_ buffer: AVAudioPCMBuffer, atFrame targetFrame: AVAudioFramePosition) throws {
+    @discardableResult
+    func append(
+        _ buffer: AVAudioPCMBuffer,
+        atFrame targetFrame: AVAudioFramePosition
+    ) throws -> TrackAppendResult {
         guard let file else { throw WriterError.alreadyFinished }
         guard buffer.format.sampleRate == format.sampleRate,
               buffer.format.channelCount == format.channelCount,
@@ -50,12 +59,18 @@ final class PCMTrackWriter {
             effectiveTarget = targetFrame
         }
 
-        if effectiveTarget > writtenFrameCount {
-            try writeSilence(frames: effectiveTarget - writtenFrameCount, to: file)
+        let insertedSilenceFrames = max(0, effectiveTarget - writtenFrameCount)
+        if insertedSilenceFrames > 0 {
+            try writeSilence(frames: insertedSilenceFrames, to: file)
         }
 
         let overlap = max(0, writtenFrameCount - effectiveTarget)
-        guard overlap < AVAudioFramePosition(buffer.frameLength) else { return }
+        guard overlap < AVAudioFramePosition(buffer.frameLength) else {
+            return TrackAppendResult(
+                insertedSilenceFrames: insertedSilenceFrames,
+                discardedOverlapFrames: AVAudioFramePosition(buffer.frameLength)
+            )
+        }
         let output: AVAudioPCMBuffer
         if overlap == 0 {
             output = buffer
@@ -65,6 +80,10 @@ final class PCMTrackWriter {
         try file.write(from: output)
         writtenFrameCount += AVAudioFramePosition(output.frameLength)
         hasWrittenAudio = true
+        return TrackAppendResult(
+            insertedSilenceFrames: insertedSilenceFrames,
+            discardedOverlapFrames: overlap
+        )
     }
 
     func finish() throws {

@@ -6,6 +6,7 @@ struct RecordingFiles: Equatable, Sendable {
     let sessionDirectory: URL
     let systemTemporaryCAF: URL
     let microphoneTemporaryCAF: URL
+    let timelineDiagnosticsJSON: URL
     let temporaryM4A: URL
     let outputDirectory: URL
     let filenameStem: String
@@ -43,6 +44,7 @@ struct RecordingFiles: Equatable, Sendable {
             sessionDirectory: sessionDirectory,
             systemTemporaryCAF: sessionDirectory.appending(path: "system.caf"),
             microphoneTemporaryCAF: sessionDirectory.appending(path: "microphone.caf"),
+            timelineDiagnosticsJSON: sessionDirectory.appending(path: "timeline.json"),
             temporaryM4A: sessionDirectory.appending(path: "output.m4a"),
             outputDirectory: outputDirectory,
             filenameStem: "Meeting-\(formatter.string(from: now))"

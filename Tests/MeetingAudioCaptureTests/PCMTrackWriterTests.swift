@@ -18,8 +18,10 @@ final class PCMTrackWriterTests: XCTestCase {
         let writer = try PCMTrackWriter(url: url, format: format)
 
         try writer.append(first, atFrame: 0)
-        try writer.append(second, atFrame: 4_801)
+        let result = try writer.append(second, atFrame: 4_801)
         try writer.finish()
+
+        XCTAssertEqual(result, TrackAppendResult(insertedSilenceFrames: 0, discardedOverlapFrames: 0))
 
         let file = try AVAudioFile(forReading: url)
         XCTAssertEqual(file.length, 9_600)
@@ -44,8 +46,10 @@ final class PCMTrackWriterTests: XCTestCase {
         let writer = try PCMTrackWriter(url: url, format: format)
 
         try writer.append(first, atFrame: 0)
-        try writer.append(second, atFrame: 9_600)
+        let result = try writer.append(second, atFrame: 9_600)
         try writer.finish()
+
+        XCTAssertEqual(result, TrackAppendResult(insertedSilenceFrames: 4_800, discardedOverlapFrames: 0))
 
         let file = try AVAudioFile(forReading: url)
         XCTAssertEqual(file.length, 14_400)
@@ -57,6 +61,28 @@ final class PCMTrackWriterTests: XCTestCase {
         XCTAssertEqual(samples[4_800], 0, accuracy: 0.0001)
         XCTAssertEqual(samples[9_599], 0, accuracy: 0.0001)
         XCTAssertEqual(samples[9_600], 0.25, accuracy: 0.0001)
+    }
+
+    func testReportsDiscardedOverlapFrames() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let url = root.appending(path: "track.caf")
+        let format = try XCTUnwrap(
+            AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 1, interleaved: false)
+        )
+        let first = try buffer(format: format, frames: 4_800, value: 0.5)
+        let second = try buffer(format: format, frames: 4_800, value: 0.25)
+        let writer = try PCMTrackWriter(url: url, format: format)
+
+        _ = try writer.append(first, atFrame: 0)
+        let partial = try writer.append(second, atFrame: 2_400)
+        let complete = try writer.append(second, atFrame: 0)
+        try writer.finish()
+
+        XCTAssertEqual(partial, TrackAppendResult(insertedSilenceFrames: 0, discardedOverlapFrames: 2_400))
+        XCTAssertEqual(complete, TrackAppendResult(insertedSilenceFrames: 0, discardedOverlapFrames: 4_800))
     }
 
     private func buffer(format: AVAudioFormat, frames: AVAudioFrameCount, value: Float) throws -> AVAudioPCMBuffer {
