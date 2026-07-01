@@ -12,7 +12,7 @@ The visual states remain intentionally subtle:
 
 - Idle and completed: waveform only.
 - Preparing, recording, and stopping: waveform with a 4-point gray dot positioned as an upper-right corner badge. The badge sits over the waveform's upper-right edge and does not extend the status item horizontally like a second icon.
-- Paused: waveform with a small gray pause mark.
+- Paused: waveform with a gray pause mark anchored at the same upper-right corner as the recording dot. The mark consists of two 1-by-5-point vertical bars within a 4-by-5-point badge area.
 - Failed: warning symbol, preserving the current behavior.
 
 All normal-state artwork uses template rendering so macOS controls foreground color for light mode, dark mode, disabled appearance, and menu-bar accessibility. There is no animation or colored recording indicator.
