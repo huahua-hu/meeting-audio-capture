@@ -2,7 +2,8 @@ import AppKit
 
 @MainActor
 enum MenuBarIndicatorImageRenderer {
-    static let imageSize = NSSize(width: 26, height: 18)
+    static let imageSize = NSSize(width: 22, height: 18)
+    static let dotRect = NSRect(x: 18, y: 13, width: 4, height: 4)
 
     static func image(for indicator: MenuBarIndicator) -> NSImage {
         let image = NSImage(size: imageSize, flipped: false) { bounds in
@@ -40,10 +41,10 @@ enum MenuBarIndicatorImageRenderer {
 
         switch badge {
         case .dot:
-            NSBezierPath(ovalIn: NSRect(x: 21, y: 6.5, width: 5, height: 5)).fill()
+            NSBezierPath(ovalIn: dotRect).fill()
         case .pause:
+            NSBezierPath(rect: NSRect(x: 16, y: 6, width: 2, height: 6)).fill()
             NSBezierPath(rect: NSRect(x: 20, y: 6, width: 2, height: 6)).fill()
-            NSBezierPath(rect: NSRect(x: 24, y: 6, width: 2, height: 6)).fill()
         case .none, .warning:
             break
         }
