@@ -1,0 +1,80 @@
+import Foundation
+
+struct RecognizedSpeechSegment: Equatable, Sendable {
+    let startTime: TimeInterval
+    let text: String
+}
+
+protocol SpeechRecognizing: Sendable {
+    func recognize(url: URL, localeIdentifier: String) async throws -> [RecognizedSpeechSegment]
+}
+
+struct TranscriptionService: Sendable {
+    private let recognizer: any SpeechRecognizing
+
+    init(recognizer: any SpeechRecognizing = AppleSpeechRecognizer()) {
+        self.recognizer = recognizer
+    }
+
+    func transcribe(
+        session: TranscriptionSession,
+        localeIdentifier: String
+    ) async throws -> TranscriptionResult {
+        async let system = recognize(
+            url: session.systemAudioFile,
+            speaker: TranscriptionSpeaker.interviewer,
+            localeIdentifier: localeIdentifier
+        )
+        async let microphone = recognize(
+            url: session.microphoneAudioFile,
+            speaker: TranscriptionSpeaker.me,
+            localeIdentifier: localeIdentifier
+        )
+
+        let trackResults = await [system, microphone]
+        var segments: [TranscriptionSegment] = []
+        var warnings: [TranscriptionError] = []
+
+        for trackResult in trackResults {
+            switch trackResult {
+            case let .success(trackSegments):
+                segments.append(contentsOf: trackSegments)
+            case let .failure(error):
+                warnings.append(error)
+            }
+        }
+
+        if segments.isEmpty, let firstWarning = warnings.first {
+            throw firstWarning
+        }
+
+        return TranscriptionResult(
+            session: session,
+            segments: segments.sorted { $0.startTime < $1.startTime },
+            warnings: warnings
+        )
+    }
+
+    private func recognize(
+        url: URL,
+        speaker: TranscriptionSpeaker,
+        localeIdentifier: String
+    ) async -> Result<[TranscriptionSegment], TranscriptionError> {
+        do {
+            let recognized = try await recognizer.recognize(url: url, localeIdentifier: localeIdentifier)
+            return .success(recognized.map {
+                TranscriptionSegment(startTime: $0.startTime, speaker: speaker, text: $0.text)
+            })
+        } catch let error as TranscriptionError {
+            return .failure(error)
+        } catch {
+            return .failure(.recognitionFailed(speaker, error.localizedDescription))
+        }
+    }
+}
+
+struct AppleSpeechRecognizer: SpeechRecognizing {
+    func recognize(url _: URL, localeIdentifier: String) async throws -> [RecognizedSpeechSegment] {
+        throw TranscriptionError.recognizerUnavailable(localeIdentifier)
+    }
+}
