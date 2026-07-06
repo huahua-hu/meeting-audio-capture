@@ -31,7 +31,11 @@ final class TranscriptionViewModel: ObservableObject {
 
     var transcriptText: String {
         guard let result else { return "" }
-        return TranscriptFormatter.markdown(for: result)
+        return TranscriptFormatter.markdown(for: result, language: language)
+    }
+
+    func text(_ key: AppTextKey) -> String {
+        AppLocalizer.text(key, language: language)
     }
 
     func start() async {

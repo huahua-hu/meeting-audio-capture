@@ -16,6 +16,7 @@ final class AppModel: ObservableObject {
     }
 
     private let coordinator: RecordingCoordinator
+    private let transcriptionWindowController = TranscriptionWindowController()
     private var observationTask: Task<Void, Never>?
     @Published private var displayError: DisplayError?
 
@@ -92,6 +93,11 @@ final class AppModel: ObservableObject {
         RecordingPresentation.menuBarIndicator(snapshot.state)
     }
 
+    var canOpenTranscription: Bool {
+        guard let outputFile = snapshot.outputFile else { return false }
+        return (try? TranscriptionSession.resolve(outputFile: outputFile)) != nil
+    }
+
     func refreshMicrophones() {
         microphones = AVCaptureDevice.devices(for: .audio).map {
             MicrophoneOption(id: $0.uniqueID, name: $0.localizedName)
@@ -155,6 +161,16 @@ final class AppModel: ObservableObject {
     func revealOutputFile() {
         guard let url = snapshot.outputFile else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    func openTranscriptionForLastRecording() {
+        guard let outputFile = snapshot.outputFile else { return }
+        do {
+            let session = try TranscriptionSession.resolve(outputFile: outputFile)
+            transcriptionWindowController.show(session: session, language: language)
+        } catch {
+            displayError = .system(error.localizedDescription)
+        }
     }
 
     func openPrivacySettings() {

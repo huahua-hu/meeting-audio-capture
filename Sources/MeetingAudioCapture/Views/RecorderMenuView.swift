@@ -66,6 +66,9 @@ struct RecorderMenuView: View {
             HStack {
                 primaryControls
                 Spacer()
+                if model.canOpenTranscription {
+                    Button(model.text(.transcribe)) { model.openTranscriptionForLastRecording() }
+                }
                 if model.snapshot.outputFile != nil {
                     Button(model.text(.openFolder)) { model.revealOutputFile() }
                 }

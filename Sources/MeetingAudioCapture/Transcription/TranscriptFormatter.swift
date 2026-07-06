@@ -9,18 +9,18 @@ struct TranscriptFormatter {
         return String(format: "%02d:%02d:%02d", hours, minutes, remainingSeconds)
     }
 
-    static func speakerLabel(_ speaker: TranscriptionSpeaker) -> String {
+    static func speakerLabel(_ speaker: TranscriptionSpeaker, language: AppLanguage = .english) -> String {
         switch speaker {
         case .interviewer:
-            return "Interviewer"
+            return AppLocalizer.text(.interviewer, language: language)
         case .me:
-            return "Me"
+            return AppLocalizer.text(.me, language: language)
         }
     }
 
-    static func markdown(for result: TranscriptionResult) -> String {
+    static func markdown(for result: TranscriptionResult, language: AppLanguage = .english) -> String {
         let lines = result.segments.map {
-            "[\(timestamp($0.startTime))] \(speakerLabel($0.speaker)): \($0.text)"
+            "[\(timestamp($0.startTime))] \(speakerLabel($0.speaker, language: language)): \($0.text)"
         }
 
         return """

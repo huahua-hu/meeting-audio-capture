@@ -3,6 +3,31 @@ import Foundation
 import XCTest
 
 final class TranscriptFormatterTests: XCTestCase {
+    func testFormatsChineseSpeakerLabels() {
+        let output = URL(fileURLWithPath: "/tmp/Meeting-20260706-091500.m4a")
+        let diagnostics = URL(fileURLWithPath: "/tmp/.diagnostics/Meeting-20260706-091500", isDirectory: true)
+        let session = TranscriptionSession(
+            outputFile: output,
+            recordingName: "Meeting-20260706-091500",
+            diagnosticsDirectory: diagnostics,
+            systemAudioFile: diagnostics.appending(path: "system.caf"),
+            microphoneAudioFile: diagnostics.appending(path: "microphone.caf")
+        )
+        let result = TranscriptionResult(
+            session: session,
+            segments: [
+                TranscriptionSegment(startTime: 3, speaker: .interviewer, text: "你好"),
+                TranscriptionSegment(startTime: 12, speaker: .me, text: "你好")
+            ],
+            warnings: []
+        )
+
+        let markdown = TranscriptFormatter.markdown(for: result, language: .simplifiedChinese)
+
+        XCTAssertTrue(markdown.contains("面试官: 你好"))
+        XCTAssertTrue(markdown.contains("我: 你好"))
+    }
+
     func testFormatsTimestamp() {
         XCTAssertEqual(TranscriptFormatter.timestamp(3.2), "00:00:03")
         XCTAssertEqual(TranscriptFormatter.timestamp(62.9), "00:01:02")
