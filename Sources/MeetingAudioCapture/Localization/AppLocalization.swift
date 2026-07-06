@@ -71,6 +71,7 @@ enum AppTextKey: CaseIterable, Sendable {
     case me
     case transcriptionWarnings
     case noTranscript
+    case selectAudioAndTranscribe
 }
 
 enum AppLocalizer {
@@ -133,7 +134,8 @@ enum AppLocalizer {
             .interviewer: "Interviewer",
             .me: "Me",
             .transcriptionWarnings: "Warnings",
-            .noTranscript: "No transcript yet"
+            .noTranscript: "No transcript yet",
+            .selectAudioAndTranscribe: "Select Audio and Transcribe"
         ],
         .simplifiedChinese: [
             .language: "语言",
@@ -181,7 +183,8 @@ enum AppLocalizer {
             .interviewer: "面试官",
             .me: "我",
             .transcriptionWarnings: "警告",
-            .noTranscript: "暂无转写内容"
+            .noTranscript: "暂无转写内容",
+            .selectAudioAndTranscribe: "选择音频并转写"
         ]
     ]
 }

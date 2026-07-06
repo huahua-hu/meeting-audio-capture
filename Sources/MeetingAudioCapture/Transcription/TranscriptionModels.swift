@@ -24,6 +24,7 @@ enum TranscriptionError: Error, Equatable, LocalizedError, Sendable {
     case recognizerUnavailable(String)
     case recognitionFailed(TranscriptionSpeaker, String)
     case saveFailed(String)
+    case unsupportedAudio(String)
 
     var errorDescription: String? {
         switch self {
@@ -39,6 +40,8 @@ enum TranscriptionError: Error, Equatable, LocalizedError, Sendable {
             return "Recognition failed for \(speaker.rawValue): \(details)"
         case let .saveFailed(details):
             return "Unable to save transcript: \(details)"
+        case let .unsupportedAudio(details):
+            return "Unsupported audio file: \(details)"
         }
     }
 }

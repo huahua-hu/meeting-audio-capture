@@ -12,38 +12,66 @@ protocol SpeechRecognizing: Sendable {
 
 struct TranscriptionService: Sendable {
     private let recognizer: any SpeechRecognizing
+    private let stereoChunkDuration: TimeInterval
 
-    init(recognizer: any SpeechRecognizing = AppleSpeechRecognizer()) {
+    init(
+        recognizer: any SpeechRecognizing = AppleSpeechRecognizer(),
+        stereoChunkDuration: TimeInterval = 50
+    ) {
         self.recognizer = recognizer
+        self.stereoChunkDuration = stereoChunkDuration
     }
 
     func transcribe(
         session: TranscriptionSession,
         localeIdentifier: String
     ) async throws -> TranscriptionResult {
-        async let system = recognize(
-            url: session.systemAudioFile,
-            speaker: TranscriptionSpeaker.interviewer,
-            localeIdentifier: localeIdentifier
-        )
-        async let microphone = recognize(
-            url: session.microphoneAudioFile,
-            speaker: TranscriptionSpeaker.me,
-            localeIdentifier: localeIdentifier
-        )
+        let extractedTracks: ExtractedAudioTracks?
+        let chunks: [ExtractedAudioChunk]
+        switch session.trackSource {
+        case .diagnostics:
+            extractedTracks = nil
+            chunks = [ExtractedAudioChunk(
+                startTime: 0,
+                systemAudioFile: session.systemAudioFile,
+                microphoneAudioFile: session.microphoneAudioFile
+            )]
+        case let .stereoExport(url):
+            let chunkDuration = stereoChunkDuration
+            let tracks = try await Task.detached {
+                try StereoChannelExtractor().extract(url: url, chunkDuration: chunkDuration)
+            }.value
+            extractedTracks = tracks
+            chunks = tracks.chunks
+        }
+        defer { extractedTracks?.cleanup() }
 
-        let trackResults = await [system, microphone]
         var segments: [TranscriptionSegment] = []
         var warnings: [TranscriptionError] = []
         var didSucceed = false
 
-        for trackResult in trackResults {
-            switch trackResult {
-            case let .success(trackSegments):
-                didSucceed = true
-                segments.append(contentsOf: trackSegments)
-            case let .failure(error):
-                warnings.append(error)
+        for chunk in chunks {
+            async let system = recognize(
+                url: chunk.systemAudioFile,
+                speaker: TranscriptionSpeaker.interviewer,
+                localeIdentifier: localeIdentifier,
+                timeOffset: chunk.startTime
+            )
+            async let microphone = recognize(
+                url: chunk.microphoneAudioFile,
+                speaker: TranscriptionSpeaker.me,
+                localeIdentifier: localeIdentifier,
+                timeOffset: chunk.startTime
+            )
+
+            for trackResult in await [system, microphone] {
+                switch trackResult {
+                case let .success(trackSegments):
+                    didSucceed = true
+                    segments.append(contentsOf: trackSegments)
+                case let .failure(error):
+                    warnings.append(error)
+                }
             }
         }
 
@@ -61,12 +89,13 @@ struct TranscriptionService: Sendable {
     private func recognize(
         url: URL,
         speaker: TranscriptionSpeaker,
-        localeIdentifier: String
+        localeIdentifier: String,
+        timeOffset: TimeInterval = 0
     ) async -> Result<[TranscriptionSegment], TranscriptionError> {
         do {
             let recognized = try await recognizer.recognize(url: url, localeIdentifier: localeIdentifier)
             return .success(recognized.map {
-                TranscriptionSegment(startTime: $0.startTime, speaker: speaker, text: $0.text)
+                TranscriptionSegment(startTime: $0.startTime + timeOffset, speaker: speaker, text: $0.text)
             })
         } catch let error as TranscriptionError {
             return .failure(error)

@@ -17,6 +17,8 @@ final class AppLocalizationTests: XCTestCase {
         XCTAssertEqual(AppLocalizer.text(.transcribe, language: .simplifiedChinese), "转写")
         XCTAssertEqual(AppLocalizer.text(.interviewer, language: .english), "Interviewer")
         XCTAssertEqual(AppLocalizer.text(.interviewer, language: .simplifiedChinese), "面试官")
+        XCTAssertEqual(AppLocalizer.text(.selectAudioAndTranscribe, language: .english), "Select Audio and Transcribe")
+        XCTAssertEqual(AppLocalizer.text(.selectAudioAndTranscribe, language: .simplifiedChinese), "选择音频并转写")
     }
 
     func testEveryKeyHasEnglishAndChineseText() {

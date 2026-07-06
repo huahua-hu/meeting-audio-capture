@@ -1,8 +1,30 @@
 @testable import MeetingAudioCapture
 import Foundation
+import AVFAudio
 import XCTest
 
 final class TranscriptionServiceTests: XCTestCase {
+    func testStereoExportRecognitionOffsetsLaterChunks() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let output = root.appending(path: "existing.m4a")
+        try writeStereoAudio(to: output, frames: 9_600)
+        let session = try TranscriptionSession.resolveSelectedAudio(outputFile: output)
+        let service = TranscriptionService(
+            recognizer: FilenameSpeechRecognizer(),
+            stereoChunkDuration: 0.1
+        )
+
+        let result = try await service.transcribe(session: session, localeIdentifier: "en-US")
+
+        for (actual, expected) in zip(result.segments.map(\.startTime), [0.01, 0.02, 0.11, 0.12]) {
+            XCTAssertEqual(actual, expected, accuracy: 0.000_001)
+        }
+        XCTAssertEqual(result.segments.map(\.speaker), [.interviewer, .me, .interviewer, .me])
+    }
+
     func testTranscribesBothTracksAndMergesByTimestamp() async throws {
         let session = makeSession()
         let recognizer = FakeSpeechRecognizer(results: [
@@ -94,6 +116,24 @@ final class TranscriptionServiceTests: XCTestCase {
             systemAudioFile: diagnostics.appending(path: "system.caf"),
             microphoneAudioFile: diagnostics.appending(path: "microphone.caf")
         )
+    }
+
+    private func writeStereoAudio(to url: URL, frames: AVAudioFrameCount) throws {
+        let file = try AVAudioFile(forWriting: url, settings: [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVSampleRateKey: 48_000,
+            AVNumberOfChannelsKey: 2
+        ])
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frames))
+        buffer.frameLength = frames
+        try file.write(from: buffer)
+    }
+}
+
+private struct FilenameSpeechRecognizer: SpeechRecognizing {
+    func recognize(url: URL, localeIdentifier _: String) async throws -> [RecognizedSpeechSegment] {
+        let time = url.lastPathComponent.hasPrefix("system") ? 0.01 : 0.02
+        return [RecognizedSpeechSegment(startTime: time, text: url.lastPathComponent)]
     }
 }
 

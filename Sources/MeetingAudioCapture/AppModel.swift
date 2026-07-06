@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import Combine
 import Foundation
+import UniformTypeIdentifiers
 
 struct MicrophoneOption: Identifiable, Hashable, Sendable {
     let id: String
@@ -95,7 +96,7 @@ final class AppModel: ObservableObject {
 
     var canOpenTranscription: Bool {
         guard let outputFile = snapshot.outputFile else { return false }
-        return (try? TranscriptionSession.resolve(outputFile: outputFile)) != nil
+        return (try? TranscriptionSession.resolveSelectedAudio(outputFile: outputFile)) != nil
     }
 
     func refreshMicrophones() {
@@ -166,7 +167,25 @@ final class AppModel: ObservableObject {
     func openTranscriptionForLastRecording() {
         guard let outputFile = snapshot.outputFile else { return }
         do {
-            let session = try TranscriptionSession.resolve(outputFile: outputFile)
+            let session = try TranscriptionSession.resolveSelectedAudio(outputFile: outputFile)
+            transcriptionWindowController.show(session: session, language: language)
+        } catch {
+            displayError = .system(error.localizedDescription)
+        }
+    }
+
+    func selectAudioForTranscription() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.mpeg4Audio]
+        panel.directoryURL = destination
+        panel.message = text(.selectAudioAndTranscribe)
+
+        guard panel.runModal() == .OK, let outputFile = panel.url else { return }
+        do {
+            let session = try TranscriptionSession.resolveSelectedAudio(outputFile: outputFile)
             transcriptionWindowController.show(session: session, language: language)
         } catch {
             displayError = .system(error.localizedDescription)

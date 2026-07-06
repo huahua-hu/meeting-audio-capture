@@ -74,6 +74,13 @@ struct RecorderMenuView: View {
                 }
             }
 
+            Button {
+                model.selectAudioForTranscription()
+            } label: {
+                Label(model.text(.selectAudioAndTranscribe), systemImage: "waveform.badge.plus")
+            }
+            .disabled(!model.canConfigure)
+
             Text(model.text(.consentNotice))
                 .font(.caption2)
                 .foregroundStyle(.secondary)

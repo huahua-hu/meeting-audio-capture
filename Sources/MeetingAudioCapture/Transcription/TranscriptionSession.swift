@@ -1,4 +1,10 @@
+import AVFAudio
 import Foundation
+
+enum TranscriptionTrackSource: Equatable, Sendable {
+    case diagnostics
+    case stereoExport(URL)
+}
 
 struct TranscriptionSession: Equatable, Sendable {
     let outputFile: URL
@@ -6,6 +12,7 @@ struct TranscriptionSession: Equatable, Sendable {
     let diagnosticsDirectory: URL
     let systemAudioFile: URL
     let microphoneAudioFile: URL
+    var trackSource: TranscriptionTrackSource = .diagnostics
 
     static func resolve(
         outputFile: URL,
@@ -35,6 +42,42 @@ struct TranscriptionSession: Equatable, Sendable {
             diagnosticsDirectory: diagnosticsDirectory,
             systemAudioFile: systemAudioFile,
             microphoneAudioFile: microphoneAudioFile
+        )
+    }
+
+    static func resolveSelectedAudio(
+        outputFile: URL,
+        fileManager: FileManager = .default
+    ) throws -> TranscriptionSession {
+        if let diagnosticsSession = try? resolve(outputFile: outputFile, fileManager: fileManager) {
+            return diagnosticsSession
+        }
+
+        guard outputFile.pathExtension.lowercased() == "m4a" else {
+            throw TranscriptionError.unsupportedAudio("Select an M4A exported by MeetingAudioCapture.")
+        }
+
+        let audioFile: AVAudioFile
+        do {
+            audioFile = try AVAudioFile(forReading: outputFile)
+        } catch {
+            throw TranscriptionError.unsupportedAudio(error.localizedDescription)
+        }
+        guard audioFile.processingFormat.channelCount == 2 else {
+            throw TranscriptionError.unsupportedAudio("The recording must contain two audio channels.")
+        }
+
+        let recordingName = outputFile.deletingPathExtension().lastPathComponent
+        let diagnosticsDirectory = outputFile
+            .deletingLastPathComponent()
+            .appending(path: ".diagnostics/\(recordingName)", directoryHint: .isDirectory)
+        return TranscriptionSession(
+            outputFile: outputFile,
+            recordingName: recordingName,
+            diagnosticsDirectory: diagnosticsDirectory,
+            systemAudioFile: outputFile,
+            microphoneAudioFile: outputFile,
+            trackSource: .stereoExport(outputFile)
         )
     }
 }
