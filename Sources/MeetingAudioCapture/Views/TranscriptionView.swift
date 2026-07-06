@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct TranscriptionView: View {
@@ -50,12 +51,10 @@ struct TranscriptionView: View {
                     }
                 }
             }
-            ScrollView {
-                Text(model.transcriptText.isEmpty ? model.text(.noTranscript) : model.transcriptText)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            ReadOnlyTranscriptTextView(
+                text: model.transcriptText.isEmpty ? model.text(.noTranscript) : model.transcriptText
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         case let .failed(message):
             Text(message).foregroundStyle(.red).textSelection(.enabled)
             Spacer()
@@ -100,5 +99,41 @@ struct TranscriptionView: View {
 
     private var retryTitle: String {
         model.state == .idle ? model.text(.startTranscription) : model.text(.retryTranscription)
+    }
+}
+
+private struct ReadOnlyTranscriptTextView: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context _: Context) -> NSScrollView {
+        let textView = NSTextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isRichText = false
+        textView.drawsBackground = false
+        textView.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        textView.textContainerInset = NSSize(width: 6, height: 8)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(
+            width: 0,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.documentView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context _: Context) {
+        guard let textView = scrollView.documentView as? NSTextView,
+              textView.string != text else { return }
+        textView.string = text
+        textView.scrollToBeginningOfDocument(nil)
     }
 }
