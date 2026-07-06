@@ -40,8 +40,8 @@ struct StereoChannelExtractor: Sendable {
             var chunkIndex = 0
             while input.framePosition < input.length {
                 let frameCount = min(framesPerChunk, input.length - input.framePosition)
-                let systemURL = directory.appending(path: "system-\(chunkIndex).m4a")
-                let microphoneURL = directory.appending(path: "microphone-\(chunkIndex).m4a")
+                let systemURL = directory.appending(path: "system-\(chunkIndex).caf")
+                let microphoneURL = directory.appending(path: "microphone-\(chunkIndex).caf")
                 try writeChunk(
                     input: input,
                     frameCount: frameCount,
@@ -69,10 +69,13 @@ struct StereoChannelExtractor: Sendable {
         microphoneURL: URL
     ) throws {
         let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVFormatIDKey: kAudioFormatLinearPCM,
             AVSampleRateKey: input.processingFormat.sampleRate,
             AVNumberOfChannelsKey: 1,
-            AVEncoderBitRateKey: 64_000
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMIsBigEndianKey: false,
+            AVLinearPCMIsNonInterleaved: true
         ]
         let systemFile = try AVAudioFile(forWriting: systemURL, settings: settings)
         let microphoneFile = try AVAudioFile(forWriting: microphoneURL, settings: settings)

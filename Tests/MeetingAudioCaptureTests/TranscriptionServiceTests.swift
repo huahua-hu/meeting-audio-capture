@@ -91,6 +91,28 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(result.warnings, [.recognitionFailed(.interviewer, "system failed")])
     }
 
+    func testNoSpeechDetectedIsAnEmptySuccessfulTrack() async throws {
+        let session = makeSession()
+        let recognizer = FakeSpeechRecognizer(
+            results: [
+                session.microphoneAudioFile: [RecognizedSpeechSegment(startTime: 2, text: "Answer")]
+            ],
+            failures: [
+                session.systemAudioFile: NSError(
+                    domain: "kAFAssistantErrorDomain",
+                    code: 1110,
+                    userInfo: [NSLocalizedDescriptionKey: "No speech detected"]
+                )
+            ]
+        )
+        let service = TranscriptionService(recognizer: recognizer)
+
+        let result = try await service.transcribe(session: session, localeIdentifier: "en-US")
+
+        XCTAssertEqual(result.segments.count, 1)
+        XCTAssertEqual(result.warnings, [])
+    }
+
     func testThrowsWhenBothTracksFail() async {
         let session = makeSession()
         let recognizer = FakeSpeechRecognizer(failures: [

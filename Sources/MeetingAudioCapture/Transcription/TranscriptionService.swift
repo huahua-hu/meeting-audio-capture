@@ -100,6 +100,11 @@ struct TranscriptionService: Sendable {
         } catch let error as TranscriptionError {
             return .failure(error)
         } catch {
+            let nsError = error as NSError
+            if (nsError.domain == "kAFAssistantErrorDomain" && nsError.code == 1110)
+                || error.localizedDescription.localizedCaseInsensitiveContains("no speech detected") {
+                return .success([])
+            }
             return .failure(.recognitionFailed(speaker, error.localizedDescription))
         }
     }

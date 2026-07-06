@@ -45,7 +45,7 @@ struct TranscriptionView: View {
             if !model.warningMessages.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(model.text(.transcriptionWarnings)).font(.headline)
-                    ForEach(model.warningMessages, id: \.self) { warning in
+                    ForEach(Array(model.warningMessages.enumerated()), id: \.offset) { _, warning in
                         Text(warning).font(.caption).foregroundStyle(.orange)
                     }
                 }

@@ -17,6 +17,11 @@ final class StereoChannelExtractorTests: XCTestCase {
         XCTAssertEqual(tracks.chunks.count, 2)
         XCTAssertEqual(tracks.chunks.map(\.startTime), [0, 0.1])
         let first = try XCTUnwrap(tracks.chunks.first)
+        XCTAssertEqual(first.systemAudioFile.pathExtension, "caf")
+        XCTAssertEqual(
+            try AVAudioFile(forReading: first.systemAudioFile).fileFormat.settings[AVFormatIDKey] as? UInt32,
+            kAudioFormatLinearPCM as UInt32
+        )
         XCTAssertGreaterThan(try rms(first.systemAudioFile), 0.05)
         XCTAssertGreaterThan(try rms(first.microphoneAudioFile), 0.15)
         XCTAssertLessThan(try rms(first.systemAudioFile), try rms(first.microphoneAudioFile))
