@@ -11,6 +11,7 @@ final class BundleConfigurationTests: XCTestCase {
         XCTAssertNotNil(plist["NSMicrophoneUsageDescription"] as? String)
         XCTAssertNotNil(plist["NSAudioCaptureUsageDescription"] as? String)
         XCTAssertNotNil(plist["NSScreenCaptureUsageDescription"] as? String)
+        XCTAssertNotNil(plist["NSSpeechRecognitionUsageDescription"] as? String)
         XCTAssertEqual(plist["LSUIElement"] as? Bool, true)
     }
 

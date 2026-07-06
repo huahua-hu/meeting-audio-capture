@@ -1,4 +1,5 @@
 import Foundation
+import Speech
 
 struct RecognizedSpeechSegment: Equatable, Sendable {
     let startTime: TimeInterval
@@ -76,7 +77,42 @@ struct TranscriptionService: Sendable {
 }
 
 struct AppleSpeechRecognizer: SpeechRecognizing {
-    func recognize(url _: URL, localeIdentifier: String) async throws -> [RecognizedSpeechSegment] {
-        throw TranscriptionError.recognizerUnavailable(localeIdentifier)
+    func recognize(url: URL, localeIdentifier: String) async throws -> [RecognizedSpeechSegment] {
+        let status = await requestAuthorization()
+        guard status == .authorized else {
+            throw TranscriptionError.speechNotAuthorized
+        }
+
+        let locale = Locale(identifier: localeIdentifier)
+        guard let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable else {
+            throw TranscriptionError.recognizerUnavailable(localeIdentifier)
+        }
+
+        let request = SFSpeechURLRecognitionRequest(url: url)
+        request.shouldReportPartialResults = false
+        request.requiresOnDeviceRecognition = false
+
+        return try await withCheckedThrowingContinuation { continuation in
+            recognizer.recognitionTask(with: request) { result, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                guard let result, result.isFinal else { return }
+                let segments = result.bestTranscription.segments.map {
+                    RecognizedSpeechSegment(startTime: $0.timestamp, text: $0.substring)
+                }
+                continuation.resume(returning: segments)
+            }
+        }
+    }
+
+    private func requestAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
+        await withCheckedContinuation { continuation in
+            SFSpeechRecognizer.requestAuthorization { status in
+                continuation.resume(returning: status)
+            }
+        }
     }
 }

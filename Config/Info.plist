@@ -28,7 +28,9 @@
     <string>MeetingAudioCapture records your microphone as a separate local track.</string>
     <key>NSAudioCaptureUsageDescription</key>
     <string>MeetingAudioCapture records system audio as a separate local track.</string>
-    <key>NSScreenCaptureUsageDescription</key>
-    <string>MeetingAudioCapture uses ScreenCaptureKit only to capture system audio and does not save screen video.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>MeetingAudioCapture uses ScreenCaptureKit only to capture system audio and does not save screen video.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>MeetingAudioCapture uses speech recognition to transcribe local recordings you choose to process.</string>
 </dict>
 </plist>
