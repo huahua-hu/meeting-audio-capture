@@ -51,6 +51,24 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(result.warnings, [.recognitionFailed(.interviewer, "network unavailable")])
     }
 
+    func testReturnsEmptySegmentsWhenSuccessfulTrackProducesNoSpeech() async throws {
+        let session = makeSession()
+        let recognizer = FakeSpeechRecognizer(
+            results: [
+                session.microphoneAudioFile: []
+            ],
+            failures: [
+                session.systemAudioFile: TranscriptionError.recognitionFailed(.interviewer, "system failed")
+            ]
+        )
+        let service = TranscriptionService(recognizer: recognizer)
+
+        let result = try await service.transcribe(session: session, localeIdentifier: "en-US")
+
+        XCTAssertEqual(result.segments, [])
+        XCTAssertEqual(result.warnings, [.recognitionFailed(.interviewer, "system failed")])
+    }
+
     func testThrowsWhenBothTracksFail() async {
         let session = makeSession()
         let recognizer = FakeSpeechRecognizer(failures: [

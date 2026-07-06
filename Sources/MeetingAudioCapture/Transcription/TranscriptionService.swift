@@ -34,17 +34,19 @@ struct TranscriptionService: Sendable {
         let trackResults = await [system, microphone]
         var segments: [TranscriptionSegment] = []
         var warnings: [TranscriptionError] = []
+        var didSucceed = false
 
         for trackResult in trackResults {
             switch trackResult {
             case let .success(trackSegments):
+                didSucceed = true
                 segments.append(contentsOf: trackSegments)
             case let .failure(error):
                 warnings.append(error)
             }
         }
 
-        if segments.isEmpty, let firstWarning = warnings.first {
+        if !didSucceed, let firstWarning = warnings.first {
             throw firstWarning
         }
 
