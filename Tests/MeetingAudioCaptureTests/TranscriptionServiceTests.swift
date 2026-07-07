@@ -4,6 +4,47 @@ import AVFAudio
 import XCTest
 
 final class TranscriptionServiceTests: XCTestCase {
+    func testChunkConcurrencyUsesProcessorCountWithinBounds() {
+        XCTAssertEqual(TranscriptionService.chunkConcurrency(processorCount: 1), 2)
+        XCTAssertEqual(TranscriptionService.chunkConcurrency(processorCount: 4), 2)
+        XCTAssertEqual(TranscriptionService.chunkConcurrency(processorCount: 8), 4)
+        XCTAssertEqual(TranscriptionService.chunkConcurrency(processorCount: 32), 6)
+    }
+
+    func testStereoChunksRecognizeConcurrentlyWithinBound() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let output = root.appending(path: "concurrent.m4a")
+        try writeStereoAudio(to: output, frames: 19_200)
+        let session = try TranscriptionSession.resolveSelectedAudio(outputFile: output)
+        let probe = RecognitionConcurrencyProbe()
+        let service = TranscriptionService(
+            recognizer: ProbedSpeechRecognizer(probe: probe),
+            stereoChunkDuration: 0.1,
+            processorCount: 8
+        )
+
+        _ = try await service.transcribe(session: session, localeIdentifier: "en-US")
+
+        let maximum = await probe.maximumActive
+        XCTAssertGreaterThan(maximum, 2)
+        XCTAssertLessThanOrEqual(maximum, 8)
+    }
+
+    func testTransientSpeechFailureRetriesOnce() async throws {
+        let session = makeSession()
+        let recognizer = FlakyBusySpeechRecognizer()
+        let service = TranscriptionService(recognizer: recognizer, retryDelay: .zero)
+
+        let result = try await service.transcribe(session: session, localeIdentifier: "en-US")
+        let callCount = await recognizer.callCount
+
+        XCTAssertEqual(result.warnings, [])
+        XCTAssertEqual(callCount, 3)
+    }
+
     func testStereoExportRecognitionOffsetsLaterChunks() async throws {
         let root = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString, directoryHint: .isDirectory)
@@ -156,6 +197,47 @@ private struct FilenameSpeechRecognizer: SpeechRecognizing {
     func recognize(url: URL, localeIdentifier _: String) async throws -> [RecognizedSpeechSegment] {
         let time = url.lastPathComponent.hasPrefix("system") ? 0.01 : 0.02
         return [RecognizedSpeechSegment(startTime: time, text: url.lastPathComponent)]
+    }
+}
+
+private actor RecognitionConcurrencyProbe {
+    private(set) var active = 0
+    private(set) var maximumActive = 0
+
+    func begin() {
+        active += 1
+        maximumActive = max(maximumActive, active)
+    }
+
+    func end() {
+        active -= 1
+    }
+}
+
+private struct ProbedSpeechRecognizer: SpeechRecognizing {
+    let probe: RecognitionConcurrencyProbe
+
+    func recognize(url _: URL, localeIdentifier _: String) async throws -> [RecognizedSpeechSegment] {
+        await probe.begin()
+        try await Task.sleep(for: .milliseconds(50))
+        await probe.end()
+        return []
+    }
+}
+
+private actor FlakyBusySpeechRecognizer: SpeechRecognizing {
+    private(set) var callCount = 0
+
+    func recognize(url _: URL, localeIdentifier _: String) async throws -> [RecognizedSpeechSegment] {
+        callCount += 1
+        if callCount == 1 {
+            throw NSError(
+                domain: "kAFAssistantErrorDomain",
+                code: 1107,
+                userInfo: [NSLocalizedDescriptionKey: "Recognition service connection interrupted"]
+            )
+        }
+        return []
     }
 }
 
