@@ -66,20 +66,10 @@ struct RecorderMenuView: View {
             HStack {
                 primaryControls
                 Spacer()
-                if model.canOpenTranscription {
-                    Button(model.text(.transcribe)) { model.openTranscriptionForLastRecording() }
-                }
                 if model.snapshot.outputFile != nil {
                     Button(model.text(.openFolder)) { model.revealOutputFile() }
                 }
             }
-
-            Button {
-                model.selectAudioForTranscription()
-            } label: {
-                Label(model.text(.selectAudioAndTranscribe), systemImage: "waveform.badge.plus")
-            }
-            .disabled(!model.canConfigure)
 
             DisclosureGroup(isExpanded: $model.showsXFYunSettings) {
                 VStack(alignment: .leading, spacing: 8) {

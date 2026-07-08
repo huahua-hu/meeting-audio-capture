@@ -59,19 +59,6 @@ enum AppTextKey: CaseIterable, Sendable {
     case exportFailed
     case unexpectedCaptureStop
     case genericErrorFormat
-    case transcribe
-    case transcription
-    case startTranscription
-    case retryTranscription
-    case copyTranscript
-    case saveTranscript
-    case transcriptionReady
-    case transcribing
-    case interviewer
-    case me
-    case transcriptionWarnings
-    case noTranscript
-    case selectAudioAndTranscribe
 }
 
 enum AppLocalizer {
@@ -122,20 +109,7 @@ enum AppLocalizer {
             .insufficientSpace: "At least 500 MB of free space is required.",
             .exportFailed: "One or more audio exports failed.",
             .unexpectedCaptureStop: "Audio capture stopped unexpectedly.",
-            .genericErrorFormat: "Error: %@",
-            .transcribe: "Transcribe",
-            .transcription: "Transcription",
-            .startTranscription: "Start Transcription",
-            .retryTranscription: "Retry",
-            .copyTranscript: "Copy",
-            .saveTranscript: "Save",
-            .transcriptionReady: "Ready to transcribe",
-            .transcribing: "Transcribing…",
-            .interviewer: "Interviewer",
-            .me: "Me",
-            .transcriptionWarnings: "Warnings",
-            .noTranscript: "No transcript yet",
-            .selectAudioAndTranscribe: "Select Audio and Transcribe"
+            .genericErrorFormat: "Error: %@"
         ],
         .simplifiedChinese: [
             .language: "语言",
@@ -171,20 +145,7 @@ enum AppLocalizer {
             .insufficientSpace: "至少需要 500 MB 可用空间。",
             .exportFailed: "一个或多个音频文件导出失败。",
             .unexpectedCaptureStop: "音频捕获意外停止。",
-            .genericErrorFormat: "错误：%@",
-            .transcribe: "转写",
-            .transcription: "转写",
-            .startTranscription: "开始转写",
-            .retryTranscription: "重试",
-            .copyTranscript: "复制",
-            .saveTranscript: "保存",
-            .transcriptionReady: "准备转写",
-            .transcribing: "正在转写…",
-            .interviewer: "面试官",
-            .me: "我",
-            .transcriptionWarnings: "警告",
-            .noTranscript: "暂无转写内容",
-            .selectAudioAndTranscribe: "选择音频并转写"
+            .genericErrorFormat: "错误：%@"
         ]
     ]
 }

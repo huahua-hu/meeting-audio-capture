@@ -6,14 +6,15 @@ final class XFYunRealtimeTranscriber: @unchecked Sendable {
     private let tasks: [Task<Void, Never>]
 
     init(credentials: XFYunCredentials, journalURL: URL) {
+        let sessionStartedAt = Date()
         let systemPair = AsyncStream<Data>.makeStream(bufferingPolicy: .bufferingNewest(512))
         let microphonePair = AsyncStream<Data>.makeStream(bufferingPolicy: .bufferingNewest(512))
         systemContinuation = systemPair.continuation
         microphoneContinuation = microphonePair.continuation
         let journal = TranscriptJournal(url: journalURL)
         tasks = [
-            Self.connectionTask(credentials: credentials, speaker: .interviewer, stream: systemPair.stream, journal: journal),
-            Self.connectionTask(credentials: credentials, speaker: .me, stream: microphonePair.stream, journal: journal),
+            Self.connectionTask(credentials: credentials, speaker: .interviewer, sessionStartedAt: sessionStartedAt, stream: systemPair.stream, journal: journal),
+            Self.connectionTask(credentials: credentials, speaker: .me, sessionStartedAt: sessionStartedAt, stream: microphonePair.stream, journal: journal),
         ]
     }
 
@@ -35,6 +36,7 @@ final class XFYunRealtimeTranscriber: @unchecked Sendable {
     private static func connectionTask(
         credentials: XFYunCredentials,
         speaker: TranscriptSpeaker,
+        sessionStartedAt: Date,
         stream: AsyncStream<Data>,
         journal: TranscriptJournal
     ) -> Task<Void, Never> {
@@ -59,6 +61,7 @@ final class XFYunRealtimeTranscriber: @unchecked Sendable {
                         if case let .final(start, end, value) = event, !value.isEmpty {
                             try await journal.append(.init(
                                 speaker: speaker,
+                                sessionStartedAt: sessionStartedAt,
                                 startTime: start,
                                 endTime: end,
                                 text: value

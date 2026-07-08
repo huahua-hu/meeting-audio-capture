@@ -11,8 +11,28 @@ final class BundleConfigurationTests: XCTestCase {
         XCTAssertNotNil(plist["NSMicrophoneUsageDescription"] as? String)
         XCTAssertNotNil(plist["NSAudioCaptureUsageDescription"] as? String)
         XCTAssertNotNil(plist["NSScreenCaptureUsageDescription"] as? String)
-        XCTAssertNotNil(plist["NSSpeechRecognitionUsageDescription"] as? String)
+        XCTAssertNil(plist["NSSpeechRecognitionUsageDescription"])
         XCTAssertEqual(plist["LSUIElement"] as? Bool, true)
+    }
+
+    func testSourceContainsNoPostRecordingTranscriptionFeature() throws {
+        let sourceRoot = projectRoot.appending(path: "Sources")
+        let files = try FileManager.default.subpathsOfDirectory(atPath: sourceRoot.path)
+            .filter { $0.hasSuffix(".swift") }
+        let forbidden = [
+            "import Speech",
+            "TranscriptionWindowController",
+            "selectAudioForTranscription",
+            "openTranscriptionForLastRecording",
+            "selectAudioAndTranscribe",
+        ]
+
+        for path in files {
+            let contents = try String(contentsOf: sourceRoot.appending(path: path), encoding: .utf8)
+            for symbol in forbidden {
+                XCTAssertFalse(contents.contains(symbol), "\(path) contains \(symbol)")
+            }
+        }
     }
 
     func testInfoPlistDeclaresBundledApplicationIcon() throws {

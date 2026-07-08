@@ -9,6 +9,7 @@ enum TranscriptSpeaker: String, Codable, Sendable {
 
 struct TranscriptJournalEntry: Codable, Equatable, Sendable {
     let speaker: TranscriptSpeaker
+    let sessionStartedAt: Date
     let startTime: TimeInterval
     let endTime: TimeInterval
     let text: String
@@ -37,7 +38,11 @@ actor TranscriptJournal {
         handle = nil
     }
 
-    static func renderMarkdown(from journalURL: URL, sourceName: String) throws -> String {
+    static func renderMarkdown(
+        from journalURL: URL,
+        sourceName: String,
+        timeZone: TimeZone = .current
+    ) throws -> String {
         guard FileManager.default.fileExists(atPath: journalURL.path) else { return "" }
         let content = try String(contentsOf: journalURL, encoding: .utf8)
         let decoder = JSONDecoder()
@@ -53,6 +58,7 @@ actor TranscriptJournal {
         struct Turn {
             let speaker: TranscriptSpeaker
             let startTime: TimeInterval
+            let startedAt: Date
             var text: String
         }
         var turns: [Turn] = []
@@ -60,19 +66,23 @@ actor TranscriptJournal {
             if turns.last?.speaker == entry.speaker {
                 turns[turns.count - 1].text += entry.text
             } else {
-                turns.append(Turn(speaker: entry.speaker, startTime: entry.startTime, text: entry.text))
+                turns.append(Turn(
+                    speaker: entry.speaker,
+                    startTime: entry.startTime,
+                    startedAt: entry.sessionStartedAt.addingTimeInterval(entry.startTime),
+                    text: entry.text
+                ))
             }
         }
 
         var lines = ["# Meeting Transcript", "", "Source: \(sourceName)", ""]
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         for turn in turns {
-            let seconds = max(0, Int(turn.startTime))
-            let timestamp = String(
-                format: "%02d:%02d:%02d",
-                seconds / 3_600,
-                seconds / 60 % 60,
-                seconds % 60
-            )
+            let timestamp = formatter.string(from: turn.startedAt)
             lines += ["[\(timestamp)] \(turn.speaker.displayName)：\(turn.text)", ""]
         }
         return lines.joined(separator: "\n")

@@ -2,7 +2,6 @@ import AppKit
 import AVFoundation
 import Combine
 import Foundation
-import UniformTypeIdentifiers
 
 struct MicrophoneOption: Identifiable, Hashable, Sendable {
     let id: String
@@ -17,7 +16,6 @@ final class AppModel: ObservableObject {
     }
 
     private let coordinator: RecordingCoordinator
-    private let transcriptionWindowController = TranscriptionWindowController()
     private let credentialStore = XFYunCredentialStore()
     private var observationTask: Task<Void, Never>?
     @Published private var displayError: DisplayError?
@@ -98,11 +96,6 @@ final class AppModel: ObservableObject {
 
     var menuBarIndicator: MenuBarIndicator {
         RecordingPresentation.menuBarIndicator(snapshot.state)
-    }
-
-    var canOpenTranscription: Bool {
-        guard let outputFile = snapshot.outputFile else { return false }
-        return (try? TranscriptionSession.resolveSelectedAudio(outputFile: outputFile)) != nil
     }
 
     func refreshMicrophones() {
@@ -189,34 +182,6 @@ final class AppModel: ObservableObject {
     func revealOutputFile() {
         guard let url = snapshot.outputFile else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
-    }
-
-    func openTranscriptionForLastRecording() {
-        guard let outputFile = snapshot.outputFile else { return }
-        do {
-            let session = try TranscriptionSession.resolveSelectedAudio(outputFile: outputFile)
-            transcriptionWindowController.show(session: session, language: language)
-        } catch {
-            displayError = .system(error.localizedDescription)
-        }
-    }
-
-    func selectAudioForTranscription() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.allowsMultipleSelection = false
-        panel.allowedContentTypes = [.mpeg4Audio]
-        panel.directoryURL = destination
-        panel.message = text(.selectAudioAndTranscribe)
-
-        guard panel.runModal() == .OK, let outputFile = panel.url else { return }
-        do {
-            let session = try TranscriptionSession.resolveSelectedAudio(outputFile: outputFile)
-            transcriptionWindowController.show(session: session, language: language)
-        } catch {
-            displayError = .system(error.localizedDescription)
-        }
     }
 
     func openPrivacySettings() {
