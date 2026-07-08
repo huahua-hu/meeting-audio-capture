@@ -4,11 +4,10 @@ import AVFAudio
 import XCTest
 
 final class TranscriptionServiceTests: XCTestCase {
-    func testChunkConcurrencyUsesProcessorCountWithinBounds() {
-        XCTAssertEqual(TranscriptionService.chunkConcurrency(processorCount: 1), 2)
-        XCTAssertEqual(TranscriptionService.chunkConcurrency(processorCount: 4), 2)
-        XCTAssertEqual(TranscriptionService.chunkConcurrency(processorCount: 8), 4)
-        XCTAssertEqual(TranscriptionService.chunkConcurrency(processorCount: 32), 6)
+    func testSpeechChunkConcurrencyIsSerializedForAnyProcessorCount() {
+        XCTAssertEqual(TranscriptionService.chunkConcurrency(processorCount: 1), 1)
+        XCTAssertEqual(TranscriptionService.chunkConcurrency(processorCount: 10), 1)
+        XCTAssertEqual(TranscriptionService.chunkConcurrency(processorCount: 32), 1)
     }
 
     func testStereoChunksRecognizeConcurrentlyWithinBound() async throws {
@@ -29,8 +28,7 @@ final class TranscriptionServiceTests: XCTestCase {
         _ = try await service.transcribe(session: session, localeIdentifier: "en-US")
 
         let maximum = await probe.maximumActive
-        XCTAssertGreaterThan(maximum, 2)
-        XCTAssertLessThanOrEqual(maximum, 8)
+        XCTAssertEqual(maximum, 2)
     }
 
     func testTransientSpeechFailureRetriesOnce() async throws {

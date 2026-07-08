@@ -30,8 +30,8 @@ struct TranscriptionService: Sendable {
         self.retryDelay = retryDelay
     }
 
-    static func chunkConcurrency(processorCount: Int) -> Int {
-        min(max(2, processorCount / 2), 6)
+    static func chunkConcurrency(processorCount _: Int) -> Int {
+        1
     }
 
     func transcribe(
