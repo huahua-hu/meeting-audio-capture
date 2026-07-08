@@ -45,11 +45,35 @@ actor TranscriptJournal {
             try? decoder.decode(TranscriptJournalEntry.self, from: Data($0.utf8))
         }
         guard !entries.isEmpty else { return "" }
+        let ordered = entries.enumerated().sorted {
+            if $0.element.startTime == $1.element.startTime { return $0.offset < $1.offset }
+            return $0.element.startTime < $1.element.startTime
+        }.map(\.element)
+
+        struct Turn {
+            let speaker: TranscriptSpeaker
+            let startTime: TimeInterval
+            var text: String
+        }
+        var turns: [Turn] = []
+        for entry in ordered where !entry.text.isEmpty {
+            if turns.last?.speaker == entry.speaker {
+                turns[turns.count - 1].text += entry.text
+            } else {
+                turns.append(Turn(speaker: entry.speaker, startTime: entry.startTime, text: entry.text))
+            }
+        }
+
         var lines = ["# Meeting Transcript", "", "Source: \(sourceName)", ""]
-        for speaker in [TranscriptSpeaker.interviewer, .me] {
-            let paragraph = entries.filter { $0.speaker == speaker }.map(\.text).joined()
-            guard !paragraph.isEmpty else { continue }
-            lines += ["## \(speaker.displayName)", "", paragraph, ""]
+        for turn in turns {
+            let seconds = max(0, Int(turn.startTime))
+            let timestamp = String(
+                format: "%02d:%02d:%02d",
+                seconds / 3_600,
+                seconds / 60 % 60,
+                seconds % 60
+            )
+            lines += ["[\(timestamp)] \(turn.speaker.displayName)：\(turn.text)", ""]
         }
         return lines.joined(separator: "\n")
     }
