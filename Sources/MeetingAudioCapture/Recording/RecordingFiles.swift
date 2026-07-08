@@ -7,6 +7,7 @@ struct RecordingFiles: Equatable, Sendable {
     let systemTemporaryCAF: URL
     let microphoneTemporaryCAF: URL
     let timelineDiagnosticsJSON: URL
+    let transcriptJournalJSONL: URL
     let temporaryM4A: URL
     let outputDirectory: URL
     let filenameStem: String
@@ -45,6 +46,7 @@ struct RecordingFiles: Equatable, Sendable {
             systemTemporaryCAF: sessionDirectory.appending(path: "system.caf"),
             microphoneTemporaryCAF: sessionDirectory.appending(path: "microphone.caf"),
             timelineDiagnosticsJSON: sessionDirectory.appending(path: "timeline.json"),
+            transcriptJournalJSONL: sessionDirectory.appending(path: "transcript.jsonl"),
             temporaryM4A: sessionDirectory.appending(path: "output.m4a"),
             outputDirectory: outputDirectory,
             filenameStem: "Meeting-\(formatter.string(from: now))"
@@ -87,14 +89,16 @@ struct RecordingFiles: Equatable, Sendable {
         try fileManager.createDirectory(at: staging, withIntermediateDirectories: false)
         defer { try? fileManager.removeItem(at: staging) }
 
-        for source in [systemTemporaryCAF, microphoneTemporaryCAF, timelineDiagnosticsJSON] {
+        var sources = [systemTemporaryCAF, microphoneTemporaryCAF, timelineDiagnosticsJSON]
+        if fileManager.fileExists(atPath: transcriptJournalJSONL.path) { sources.append(transcriptJournalJSONL) }
+        for source in sources {
             try fileManager.copyItem(
                 at: source,
                 to: staging.appending(path: source.lastPathComponent)
             )
         }
         try fileManager.moveItem(at: staging, to: destination)
-        for source in [systemTemporaryCAF, microphoneTemporaryCAF, timelineDiagnosticsJSON] {
+        for source in sources {
             try fileManager.removeItem(at: source)
         }
         return destination

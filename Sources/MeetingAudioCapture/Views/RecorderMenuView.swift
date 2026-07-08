@@ -81,6 +81,29 @@ struct RecorderMenuView: View {
             }
             .disabled(!model.canConfigure)
 
+            DisclosureGroup(isExpanded: $model.showsXFYunSettings) {
+                VStack(alignment: .leading, spacing: 8) {
+                    if model.xfyunConfigured {
+                        Text("已配置，录音时将实时转写")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button("删除讯飞凭据", role: .destructive) { model.deleteXFYunCredentials() }
+                    } else {
+                        TextField("讯飞 AppID", text: $model.xfyunAppIDInput)
+                        SecureField("讯飞 AppKey", text: $model.xfyunAppKeyInput)
+                        Button("保存到钥匙串") { model.saveXFYunCredentials() }
+                            .disabled(model.xfyunAppIDInput.isEmpty || model.xfyunAppKeyInput.isEmpty)
+                    }
+                }
+                .padding(.top, 6)
+            } label: {
+                Label(
+                    model.xfyunConfigured ? "实时转写：已启用" : "配置讯飞实时转写",
+                    systemImage: model.xfyunConfigured ? "waveform.badge.checkmark" : "key"
+                )
+            }
+            .disabled(!model.canConfigure)
+
             Text(model.text(.consentNotice))
                 .font(.caption2)
                 .foregroundStyle(.secondary)

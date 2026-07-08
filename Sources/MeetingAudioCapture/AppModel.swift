@@ -18,6 +18,7 @@ final class AppModel: ObservableObject {
 
     private let coordinator: RecordingCoordinator
     private let transcriptionWindowController = TranscriptionWindowController()
+    private let credentialStore = XFYunCredentialStore()
     private var observationTask: Task<Void, Never>?
     @Published private var displayError: DisplayError?
 
@@ -38,6 +39,10 @@ final class AppModel: ObservableObject {
     @Published var language: AppLanguage {
         didSet { AppLanguagePreference.save(language) }
     }
+    @Published var xfyunConfigured = false
+    @Published var showsXFYunSettings = false
+    @Published var xfyunAppIDInput = ""
+    @Published var xfyunAppKeyInput = ""
 
     var errorMessage: String? {
         guard let displayError else { return nil }
@@ -70,6 +75,7 @@ final class AppModel: ObservableObject {
         }
         selectedMicrophoneID = UserDefaults.standard.string(forKey: DefaultsKey.microphoneID)
         language = AppLanguagePreference.load()
+        xfyunConfigured = (try? credentialStore.readCredentials()) != nil
         try? RecordingFiles.pruneDiagnostics(in: destination, keeping: 5)
         refreshMicrophones()
         observeSnapshots()
@@ -133,12 +139,33 @@ final class AppModel: ObservableObject {
                 try await coordinator.start(
                     root: destination,
                     microphoneDeviceID: selectedMicrophoneID,
-                    microphoneName: selectedMicrophoneName
+                    microphoneName: selectedMicrophoneName,
+                    realtimeCredentials: try? credentialStore.readCredentials()
                 )
             } catch {
                 displayError = displayError(for: error)
             }
         }
+    }
+
+    func saveXFYunCredentials() {
+        let appID = xfyunAppIDInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        let appKey = xfyunAppKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !appID.isEmpty, !appKey.isEmpty else { return }
+        do {
+            try credentialStore.saveCredentials(.init(appID: appID, appKey: appKey))
+            xfyunConfigured = true
+            xfyunAppIDInput = ""
+            xfyunAppKeyInput = ""
+            showsXFYunSettings = false
+        } catch { displayError = .system(error.localizedDescription) }
+    }
+
+    func deleteXFYunCredentials() {
+        do {
+            try credentialStore.deleteCredentials()
+            xfyunConfigured = false
+        } catch { displayError = .system(error.localizedDescription) }
     }
 
     func pause() {

@@ -60,6 +60,13 @@ struct RecordingExporter: RecordingExporting, Sendable {
             }
             throw RecordingExportError.moveFailed
         }
+        if let markdown = try? TranscriptJournal.renderMarkdown(
+            from: files.transcriptJournalJSONL,
+            sourceName: outputURL.lastPathComponent
+        ), !markdown.isEmpty {
+            let transcriptURL = outputURL.deletingPathExtension().appendingPathExtension("md")
+            try? markdown.write(to: transcriptURL, atomically: true, encoding: .utf8)
+        }
         _ = try preserveDiagnostics(files, outputURL)
         try? removeSession(files)
         return outputURL

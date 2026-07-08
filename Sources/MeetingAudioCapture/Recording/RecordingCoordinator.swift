@@ -39,6 +39,8 @@ actor RecordingCoordinator {
     private var maxWrittenFrames: AVAudioFramePosition = 0
     private var recordingDiagnostics = RecordingTimelineDiagnostics()
     private var isFinalizing = false
+    private var realtimeTranscriber: XFYunRealtimeTranscriber?
+    private var realtimeEncoders: [CaptureTrack: RealtimePCMEncoder] = [:]
 
     init(
         capture: any CaptureClient,
@@ -63,7 +65,8 @@ actor RecordingCoordinator {
     func start(
         root: URL,
         microphoneDeviceID: String?,
-        microphoneName _: String
+        microphoneName _: String,
+        realtimeCredentials: XFYunCredentials? = nil
     ) async throws {
         if case .completed = stateMachine.state { try stateMachine.transition(to: .idle) }
         if case .failed = stateMachine.state { try stateMachine.transition(to: .idle) }
@@ -84,6 +87,10 @@ actor RecordingCoordinator {
         microphoneDecoder = nil
         maxWrittenFrames = 0
         recordingDiagnostics = RecordingTimelineDiagnostics()
+        realtimeEncoders = [.system: RealtimePCMEncoder(), .microphone: RealtimePCMEncoder()]
+        realtimeTranscriber = realtimeCredentials.map {
+            XFYunRealtimeTranscriber(credentials: $0, journalURL: files.transcriptJournalJSONL)
+        }
         lastPresentationTime = .zero
         publish(state: .preparing)
 
@@ -201,6 +208,7 @@ actor RecordingCoordinator {
         case .system:
             guard let writer = systemWriter, let decoder = systemDecoder else { return }
             let pcm = try decoder.decode(buffer)
+            enqueueRealtime(pcm, track: track)
             let appendResult = try writer.append(pcm, atFrame: targetFrame)
             recordingDiagnostics.system.record(
                 bufferPTSSeconds: CMTimeGetSeconds(pts),
@@ -212,6 +220,7 @@ actor RecordingCoordinator {
         case .microphone:
             guard let writer = microphoneWriter, let decoder = microphoneDecoder else { return }
             let pcm = try decoder.decode(buffer)
+            enqueueRealtime(pcm, track: track)
             let appendResult = try writer.append(pcm, atFrame: targetFrame)
             recordingDiagnostics.microphone.record(
                 bufferPTSSeconds: CMTimeGetSeconds(pts),
@@ -241,6 +250,8 @@ actor RecordingCoordinator {
     }
 
     private func finalize(error captureError: String?) async {
+        await realtimeTranscriber?.finish()
+        realtimeTranscriber = nil
         try? systemWriter?.finish()
         try? microphoneWriter?.finish()
         systemWriter = nil
@@ -265,6 +276,13 @@ actor RecordingCoordinator {
             }
             publish(state: stateMachine.state)
         }
+    }
+
+    private func enqueueRealtime(_ buffer: AVAudioPCMBuffer, track: CaptureTrack) {
+        guard var encoder = realtimeEncoders[track] else { return }
+        let data = encoder.encode(buffer)
+        realtimeEncoders[track] = encoder
+        realtimeTranscriber?.send(data, track: track)
     }
 
     private func publish(state: RecordingState) {
