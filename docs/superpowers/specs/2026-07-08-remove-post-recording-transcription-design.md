@@ -21,6 +21,13 @@ Remove the complete Apple Speech post-recording transcription workflow. The appl
 - Time-ordered, speaker-interleaved Markdown export next to the M4A.
 - Diagnostic CAF and timeline files used for recording recovery and diagnostics.
 
+## Transcript Time
+
+- Each exported speaker turn uses the wall-clock time at which its first recognized word occurred.
+- The display format is `[yyyy-MM-dd HH:mm:ss]` in the user's current time zone.
+- The session start wall-clock date plus XFYun's relative phrase start time produces the displayed date.
+- Relative phrase time remains the ordering key so operating-system clock adjustments cannot reorder a meeting.
+
 ## Verification
 
 - Source scans contain no post-recording transcription UI or Apple Speech imports.
