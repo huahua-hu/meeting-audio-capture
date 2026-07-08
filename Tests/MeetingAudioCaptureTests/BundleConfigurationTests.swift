@@ -60,6 +60,23 @@ final class BundleConfigurationTests: XCTestCase {
         XCTAssertTrue(makefile.contains("MeetingAudioCapture-0.2.0-macos13-arm64.dmg"))
     }
 
+    func testSourceDoesNotEmbedXFYunCredentialDefaults() throws {
+        let sourceRoot = projectRoot.appending(path: "Sources")
+        let files = try FileManager.default.subpathsOfDirectory(atPath: sourceRoot.path)
+            .filter { $0.hasSuffix(".swift") || $0.hasSuffix(".plist") }
+        let appKeyPattern = try NSRegularExpression(
+            pattern: #"XF_APP_KEY[^\n]*[\"'][0-9a-fA-F]{32}[\"']"#
+        )
+
+        for path in files {
+            let contents = try String(contentsOf: sourceRoot.appending(path: path), encoding: .utf8)
+            XCTAssertFalse(contents.contains("os.getenv(\"XF_APPID\""), path)
+            XCTAssertFalse(contents.contains("os.getenv(\"XF_APP_KEY\""), path)
+            let range = NSRange(contents.startIndex..., in: contents)
+            XCTAssertNil(appKeyPattern.firstMatch(in: contents, range: range), path)
+        }
+    }
+
     private var projectRoot: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
