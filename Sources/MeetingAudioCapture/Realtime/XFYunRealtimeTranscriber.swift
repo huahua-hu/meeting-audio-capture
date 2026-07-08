@@ -13,7 +13,7 @@ final class XFYunRealtimeTranscriber: @unchecked Sendable {
         microphoneContinuation = microphonePair.continuation
         let journal = TranscriptJournal(url: journalURL)
         tasks = [
-            Self.connectionTask(credentials: credentials, speaker: .interviewer, sessionStartedAt: sessionStartedAt, stream: systemPair.stream, journal: journal),
+            Self.connectionTask(credentials: credentials, speaker: .other, sessionStartedAt: sessionStartedAt, stream: systemPair.stream, journal: journal),
             Self.connectionTask(credentials: credentials, speaker: .me, sessionStartedAt: sessionStartedAt, stream: microphonePair.stream, journal: journal),
         ]
     }

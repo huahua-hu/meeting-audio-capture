@@ -1,10 +1,10 @@
 import Foundation
 
 enum TranscriptSpeaker: String, Codable, Sendable {
-    case interviewer
+    case other
     case me
 
-    var displayName: String { self == .interviewer ? "面试官" : "我" }
+    var displayName: String { self == .other ? "对方" : "我" }
 }
 
 struct TranscriptJournalEntry: Codable, Equatable, Sendable {
