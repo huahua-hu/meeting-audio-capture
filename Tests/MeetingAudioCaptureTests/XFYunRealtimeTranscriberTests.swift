@@ -22,18 +22,26 @@ final class XFYunRealtimeTranscriberTests: XCTestCase {
 
     func testReceiveFailureAfterStartedReconnectsWithoutWaitingForMoreAudio() async throws {
         let input = XFYunTrackInputStream(bufferLimit: 16)
-        let firstSocket = ScriptedWebSocket(receiveSteps: [.started, .failure])
+        let chunk = Data([1, 2, 3, 4])
+        let firstSocket = ScriptedWebSocket(
+            receiveSteps: [.started],
+            disconnectAfterDataSends: 1
+        )
         let secondSocket = ScriptedWebSocket(
             receiveSteps: [.started],
             onResume: { input.finish() }
         )
         let factory = ScriptedWebSocketFactory(sockets: [firstSocket, secondSocket])
-        input.send(Data([1, 2, 3, 4]))
+        input.send(chunk)
 
         await Self.runWorker(input: input, factory: factory)
 
         let createdCount = await factory.createdCount
+        let firstMessages = await firstSocket.sentDataMessages
+        let secondMessages = await secondSocket.sentDataMessages
         XCTAssertEqual(createdCount, 2)
+        XCTAssertEqual(firstMessages, [chunk])
+        XCTAssertEqual(secondMessages, [chunk])
     }
 
     func testSendFailureCancelsSocketBeforeAwaitingBlockedReceiver() async throws {
@@ -112,14 +120,29 @@ final class XFYunRealtimeTranscriberTests: XCTestCase {
         let input = XFYunTrackInputStream(bufferLimit: 1)
         input.send(Data(repeating: 0, count: 32_000))
         input.send(Data([1, 2, 3, 4]))
-        var iterator = input.stream.makeAsyncIterator()
 
-        guard case let .audio(chunk) = await iterator.next() else {
+        guard case let .audio(chunk) = await input.next() else {
             return XCTFail("Expected an audio chunk")
         }
 
         XCTAssertEqual(chunk.startByteOffset, 32_000)
         XCTAssertEqual(chunk.startTime, 1, accuracy: 0.000_1)
+    }
+
+    func testConnectionFailureSignalDoesNotEvictBufferedAudio() async throws {
+        let input = XFYunTrackInputStream(bufferLimit: 1)
+        let connectionID = UUID()
+        let chunk = Data([1, 2, 3, 4])
+        input.send(chunk)
+        input.signalConnectionFailure(connectionID)
+
+        guard case .connectionFailed(connectionID) = await input.next() else {
+            return XCTFail("Expected the connection failure first")
+        }
+        guard case let .audio(bufferedChunk) = await input.next() else {
+            return XCTFail("Expected the buffered audio to remain available")
+        }
+        XCTAssertEqual(bufferedChunk.data, chunk)
     }
 
     private static func runWorker(
@@ -169,6 +192,8 @@ private actor ScriptedWebSocket: XFYunWebSocketClient {
 
     private var receiveSteps: [ReceiveStep]
     private var remainingDataSendFailures: Int
+    private var remainingDisconnectingDataSends: Int
+    private var pendingDisconnect = false
     private var sentMessages: [URLSessionWebSocketTask.Message] = []
     private var blockedReceivers: [CheckedContinuation<URLSessionWebSocketTask.Message, Error>] = []
     private let onResume: (@Sendable () -> Void)?
@@ -178,10 +203,12 @@ private actor ScriptedWebSocket: XFYunWebSocketClient {
     init(
         receiveSteps: [ReceiveStep],
         dataSendFailures: Int = 0,
+        disconnectAfterDataSends: Int = 0,
         onResume: (@Sendable () -> Void)? = nil
     ) {
         self.receiveSteps = receiveSteps
         remainingDataSendFailures = dataSendFailures
+        remainingDisconnectingDataSends = disconnectAfterDataSends
         self.onResume = onResume
     }
 
@@ -196,6 +223,11 @@ private actor ScriptedWebSocket: XFYunWebSocketClient {
             throw TestFailure.disconnected
         }
         sentMessages.append(message)
+        if case .data = message, remainingDisconnectingDataSends > 0 {
+            remainingDisconnectingDataSends -= 1
+            pendingDisconnect = true
+            disconnectBlockedReceivers()
+        }
     }
 
     func receive() async throws -> URLSessionWebSocketTask.Message {
@@ -207,6 +239,10 @@ private actor ScriptedWebSocket: XFYunWebSocketClient {
                 throw TestFailure.disconnected
             }
         }
+        if pendingDisconnect {
+            pendingDisconnect = false
+            throw TestFailure.disconnected
+        }
         return try await withCheckedThrowingContinuation { continuation in
             blockedReceivers.append(continuation)
         }
@@ -214,6 +250,10 @@ private actor ScriptedWebSocket: XFYunWebSocketClient {
 
     func cancel() async {
         cancelCount += 1
+        disconnectBlockedReceivers()
+    }
+
+    private func disconnectBlockedReceivers() {
         let receivers = blockedReceivers
         blockedReceivers.removeAll()
         for receiver in receivers {

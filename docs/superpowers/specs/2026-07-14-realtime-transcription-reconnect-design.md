@@ -17,22 +17,24 @@ The current transcriber creates one WebSocket per track and exits its worker aft
 - The tenth consecutive failed attempt stops that track's worker silently.
 - No new alert, banner, or recording failure is presented.
 - Audio recording and export continue regardless of transcription state.
-- Each track buffers the newest 2,048 chunks while reconnecting. A chunk whose send fails remains pending for the next connection.
-- Every audio chunk carries its absolute PCM byte offset. If the bounded buffer evicts audio, the next connection uses that absolute offset and transcript entries stay on the original recording timeline.
-- A receive failure injects a connection-scoped control event into the same input stream, waking a worker even when no new audio is arriving.
+- Each track buffers the newest 2,048 chunks while reconnecting. Connection control events use a separate priority queue and never evict buffered audio.
+- Every audio chunk carries its absolute PCM byte offset. Piecewise timestamp mapping preserves the original recording timeline even if the bounded buffer evicts audio.
+- Audio sent after the latest final recognition result remains in a replay window. A replacement connection replays that unconfirmed audio before consuming newly buffered chunks.
+- A receive failure injects a connection-scoped control event, waking a worker even when no new audio is arriving.
 - Finishing a recording immediately prevents new connection attempts, sends the XFYun end marker when connected, then closes active sockets and waits for both workers after the existing grace period.
 
 ## Structure
 
-`XFYunReconnectPolicy` owns the deterministic threshold and delay rules. `XFYunRealtimeTranscriber` owns each long-lived track worker, keeps the stream iterator across connection attempts, and uses the policy without exposing status to the UI.
+`XFYunReconnectPolicy` owns the deterministic threshold and delay rules. `XFYunRealtimeTranscriber` owns each long-lived track worker, bounded audio queue, priority control queue, replay window, and connection timeline without exposing status to the UI.
 
 ## Testing
 
 - Unit-test attempts one through nine returning a one-second retry and attempt ten returning give-up.
 - Unit-test `started` resetting the consecutive failure counter.
 - Unit-test the worker reconnecting after a transport failure and preserving the pending audio chunk.
+- Unit-test replaying audio that was sent but not confirmed by a final recognition result.
 - Unit-test the worker creating exactly ten failed connections before stopping.
 - Unit-test the absolute PCM byte offsets used to preserve transcript timestamps across replacement connections and buffer eviction.
-- Unit-test post-start receive failure, a receive blocked until socket cancellation, buffer eviction, and finish during retry/initial connection.
+- Unit-test post-start receive failure, a receive blocked until socket cancellation, control priority without audio eviction, buffer eviction, and finish during retry/initial connection.
 - Run the complete Swift test suite.
 - Perform a real short recording with the local proxy path unavailable, restore connectivity, and verify that a transcript journal is created after reconnection.

@@ -28,7 +28,7 @@ private struct URLSessionXFYunWebSocketClient: XFYunWebSocketClient {
 }
 
 struct XFYunAudioChunk: Sendable {
-    private static let bytesPerSecond = 16_000 * MemoryLayout<Int16>.size
+    static let bytesPerSecond = 16_000 * MemoryLayout<Int16>.size
 
     let data: Data
     let startByteOffset: Int
@@ -42,48 +42,100 @@ struct XFYunAudioChunk: Sendable {
 enum XFYunTrackInput: Sendable {
     case audio(XFYunAudioChunk)
     case connectionFailed(UUID)
-    case finished
+    case progress(UUID)
 }
 
 final class XFYunTrackInputStream: @unchecked Sendable {
-    let stream: AsyncStream<XFYunTrackInput>
+    private enum NextAction {
+        case wait
+        case returnValue(XFYunTrackInput?)
+    }
 
-    private let continuation: AsyncStream<XFYunTrackInput>.Continuation
+    private let bufferLimit: Int
     private let lock = NSLock()
+    private var audioQueue: [XFYunAudioChunk] = []
+    private var controlQueue: [XFYunTrackInput] = []
+    private var waiter: CheckedContinuation<XFYunTrackInput?, Never>?
     private var nextByteOffset = 0
     private var isFinished = false
 
     init(bufferLimit: Int) {
-        let pair = AsyncStream<XFYunTrackInput>.makeStream(
-            bufferingPolicy: .bufferingNewest(bufferLimit)
-        )
-        stream = pair.stream
-        continuation = pair.continuation
+        precondition(bufferLimit > 0)
+        self.bufferLimit = bufferLimit
     }
 
     func send(_ data: Data) {
         guard !data.isEmpty else { return }
-        lock.withLock {
-            guard !isFinished else { return }
+        let delivery: (CheckedContinuation<XFYunTrackInput?, Never>, XFYunAudioChunk)? = lock.withLock {
+            guard !isFinished else { return nil }
             let chunk = XFYunAudioChunk(data: data, startByteOffset: nextByteOffset)
             nextByteOffset += data.count
-            continuation.yield(.audio(chunk))
+            if let waiter {
+                self.waiter = nil
+                return (waiter, chunk)
+            }
+            if audioQueue.count == bufferLimit {
+                audioQueue.removeFirst()
+            }
+            audioQueue.append(chunk)
+            return nil
+        }
+        if let (waiting, chunk) = delivery {
+            waiting.resume(returning: .audio(chunk))
         }
     }
 
     func signalConnectionFailure(_ connectionID: UUID) {
-        lock.withLock {
-            guard !isFinished else { return }
-            continuation.yield(.connectionFailed(connectionID))
+        signalControl(.connectionFailed(connectionID))
+    }
+
+    func signalProgress(_ connectionID: UUID) {
+        signalControl(.progress(connectionID))
+    }
+
+    private func signalControl(_ event: XFYunTrackInput) {
+        let waiting: CheckedContinuation<XFYunTrackInput?, Never>? = lock.withLock {
+            guard !isFinished else { return nil }
+            if let waiter {
+                self.waiter = nil
+                return waiter
+            }
+            controlQueue.append(event)
+            return nil
         }
+        waiting?.resume(returning: event)
     }
 
     func finish() {
-        lock.withLock {
-            guard !isFinished else { return }
+        let waiting: CheckedContinuation<XFYunTrackInput?, Never>? = lock.withLock {
+            guard !isFinished else { return nil }
             isFinished = true
-            continuation.yield(.finished)
-            continuation.finish()
+            let waiting = waiter
+            waiter = nil
+            return waiting
+        }
+        waiting?.resume(returning: nil)
+    }
+
+    func next() async -> XFYunTrackInput? {
+        await withCheckedContinuation { continuation in
+            let action: NextAction = lock.withLock {
+                if !controlQueue.isEmpty {
+                    return .returnValue(controlQueue.removeFirst())
+                }
+                if !audioQueue.isEmpty {
+                    return .returnValue(.audio(audioQueue.removeFirst()))
+                }
+                if isFinished {
+                    return .returnValue(nil)
+                }
+                precondition(waiter == nil)
+                waiter = continuation
+                return .wait
+            }
+            if case let .returnValue(value) = action {
+                continuation.resume(returning: value)
+            }
         }
     }
 }
@@ -117,15 +169,49 @@ actor XFYunConnectionController {
 }
 
 private actor XFYunConnectionTimeline {
-    private var offset: TimeInterval?
+    private struct Segment {
+        let localStartByteOffset: Int
+        let originalStartByteOffset: Int
+        let byteCount: Int
+    }
 
-    func beginIfNeeded(at time: TimeInterval) {
-        if offset == nil { offset = time }
+    private var segments: [Segment] = []
+    private var sentByteCount = 0
+    private(set) var acknowledgedByteOffset: Int?
+
+    func recordSent(_ chunk: XFYunAudioChunk) {
+        segments.append(.init(
+            localStartByteOffset: sentByteCount,
+            originalStartByteOffset: chunk.startByteOffset,
+            byteCount: chunk.data.count
+        ))
+        sentByteCount += chunk.data.count
     }
 
     func adjusted(start: TimeInterval, end: TimeInterval) -> (TimeInterval, TimeInterval) {
-        let offset = offset ?? 0
-        return (offset + start, offset + end)
+        (map(time: start, isEnd: false), map(time: end, isEnd: true))
+    }
+
+    func acknowledge(end: TimeInterval) {
+        let mapped = mapToByteOffset(time: end, isEnd: true)
+        acknowledgedByteOffset = max(acknowledgedByteOffset ?? 0, mapped)
+    }
+
+    private func map(time: TimeInterval, isEnd: Bool) -> TimeInterval {
+        TimeInterval(mapToByteOffset(time: time, isEnd: isEnd))
+            / TimeInterval(XFYunAudioChunk.bytesPerSecond)
+    }
+
+    private func mapToByteOffset(time: TimeInterval, isEnd: Bool) -> Int {
+        let localOffset = max(0, Int((time * Double(XFYunAudioChunk.bytesPerSecond)).rounded()))
+        let segment = isEnd
+            ? segments.last(where: { $0.localStartByteOffset < localOffset })
+            : segments.last(where: { $0.localStartByteOffset <= localOffset })
+        guard let segment else {
+            return segments.first?.originalStartByteOffset ?? localOffset
+        }
+        let delta = min(localOffset - segment.localStartByteOffset, segment.byteCount)
+        return segment.originalStartByteOffset + delta
     }
 }
 
@@ -137,7 +223,6 @@ enum XFYunTrackWorker {
         case server(Int, String)
         case unexpectedInitialEvent
         case connectionClosed
-        case bufferGap
     }
 
     static func run(
@@ -150,16 +235,15 @@ enum XFYunTrackWorker {
         socketFactory: @escaping SocketFactory,
         sleep: @escaping Sleeper
     ) async {
-        var iterator = input.stream.makeAsyncIterator()
         var pendingChunk: XFYunAudioChunk?
+        var replayBacklog: [XFYunAudioChunk] = []
         var reconnectPolicy = XFYunReconnectPolicy()
 
         while pendingChunk == nil {
-            guard let event = await iterator.next() else { return }
+            guard let event = await input.next() else { return }
             switch event {
             case let .audio(chunk): pendingChunk = chunk
-            case .finished: return
-            case .connectionFailed: continue
+            case .connectionFailed, .progress: continue
             }
         }
 
@@ -169,7 +253,8 @@ enum XFYunTrackWorker {
             let connectionID = UUID()
             var socket: (any XFYunWebSocketClient)?
             var receiver: Task<Void, Never>?
-            var shouldRetryWithoutFailure = false
+            let timeline = XFYunConnectionTimeline()
+            var inFlight: [XFYunAudioChunk] = []
 
             do {
                 let url = try XFYunAuthSigner().signedURL(
@@ -191,7 +276,6 @@ enum XFYunTrackWorker {
                     throw WorkerError.unexpectedInitialEvent
                 }
 
-                let timeline = XFYunConnectionTimeline()
                 receiver = receiveResults(
                     from: connection,
                     connectionID: connectionID,
@@ -201,11 +285,13 @@ enum XFYunTrackWorker {
                     input: input,
                     journal: journal
                 )
-                var expectedByteOffset: Int?
-
                 connectionLoop: while !Task.isCancelled {
                     if pendingChunk == nil {
-                        guard let event = await iterator.next() else { break connectionLoop }
+                        if !replayBacklog.isEmpty {
+                            pendingChunk = replayBacklog.removeFirst()
+                            continue
+                        }
+                        guard let event = await input.next() else { break connectionLoop }
                         switch event {
                         case let .audio(chunk):
                             pendingChunk = chunk
@@ -214,19 +300,19 @@ enum XFYunTrackWorker {
                                 throw WorkerError.connectionClosed
                             }
                             continue
-                        case .finished:
-                            break connectionLoop
+                        case let .progress(progressID):
+                            if progressID == connectionID,
+                               let acknowledged = await timeline.acknowledgedByteOffset {
+                                inFlight.removeAll { $0.endByteOffset <= acknowledged }
+                            }
+                            continue
                         }
                     }
 
                     guard let chunk = pendingChunk else { break connectionLoop }
-                    if let expectedByteOffset, chunk.startByteOffset != expectedByteOffset {
-                        shouldRetryWithoutFailure = true
-                        throw WorkerError.bufferGap
-                    }
-                    await timeline.beginIfNeeded(at: chunk.startTime)
                     try await connection.send(.data(chunk.data))
-                    expectedByteOffset = chunk.endByteOffset
+                    await timeline.recordSent(chunk)
+                    inFlight.append(chunk)
                     pendingChunk = nil
                 }
 
@@ -244,12 +330,19 @@ enum XFYunTrackWorker {
                 } else {
                     await controller.clear()
                 }
+
+                let acknowledged = await timeline.acknowledgedByteOffset
+                var queued = inFlight.filter {
+                    guard let acknowledged else { return true }
+                    return $0.endByteOffset > acknowledged
+                }
+                if let pendingChunk { queued.append(pendingChunk) }
+                queued.append(contentsOf: replayBacklog)
+                pendingChunk = queued.first
+                replayBacklog = Array(queued.dropFirst())
+
                 guard !Task.isCancelled else { return }
                 guard !(await controller.finishRequested) else { return }
-
-                if shouldRetryWithoutFailure {
-                    continue
-                }
                 switch reconnectPolicy.registerFailure() {
                 case let .retry(delay):
                     do {
@@ -269,8 +362,8 @@ enum XFYunTrackWorker {
         receiver: Task<Void, Never>?,
         controller: XFYunConnectionController
     ) async {
-        await socket.cancel()
         receiver?.cancel()
+        await socket.cancel()
         if let receiver { _ = await receiver.result }
         await controller.clear()
     }
@@ -298,6 +391,8 @@ enum XFYunTrackWorker {
                             endTime: adjusted.1,
                             text: value
                         ))
+                        await timeline.acknowledge(end: end)
+                        input.signalProgress(connectionID)
                     case .failed:
                         input.signalConnectionFailure(connectionID)
                         await socket.cancel()
