@@ -4,29 +4,15 @@ import XCTest
 
 final class XFYunRealtimeTranscriberTests: XCTestCase {
     func testTrackWorkerReconnectsAndSendsPendingChunk() async throws {
-        let firstSocket = ScriptedWebSocket(steps: [.failure])
-        let secondSocket = ScriptedWebSocket(steps: [
-            .message(.string(#"{"action":"started","code":"0","data":""}"#)),
-        ])
+        let firstSocket = ScriptedWebSocket(receiveSteps: [.failure])
+        let secondSocket = ScriptedWebSocket(receiveSteps: [.started])
         let factory = ScriptedWebSocketFactory(sockets: [firstSocket, secondSocket])
-        let pair = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
+        let input = XFYunTrackInputStream(bufferLimit: 16)
         let chunk = Data([1, 2, 3, 4])
-        pair.continuation.yield(chunk)
-        pair.continuation.finish()
-        let journalURL = FileManager.default.temporaryDirectory
-            .appending(path: UUID().uuidString)
-            .appendingPathExtension("jsonl")
-        defer { try? FileManager.default.removeItem(at: journalURL) }
+        input.send(chunk)
+        input.finish()
 
-        await XFYunTrackWorker.run(
-            credentials: .init(appID: "test-app", appKey: "test-key"),
-            speaker: .me,
-            sessionStartedAt: .now,
-            stream: pair.stream,
-            journal: TranscriptJournal(url: journalURL),
-            socketFactory: { _ in try await factory.next() },
-            sleep: { _ in }
-        )
+        await Self.runWorker(input: input, factory: factory)
 
         let createdCount = await factory.createdCount
         let sentDataMessages = await secondSocket.sentDataMessages
@@ -34,12 +20,114 @@ final class XFYunRealtimeTranscriberTests: XCTestCase {
         XCTAssertEqual(sentDataMessages, [chunk])
     }
 
-    func testTrackWorkerStopsAfterTenConsecutiveConnectionFailures() async throws {
-        let sockets = (1...10).map { _ in ScriptedWebSocket(steps: [.failure]) }
-        let factory = ScriptedWebSocketFactory(sockets: sockets)
-        let pair = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
-        pair.continuation.yield(Data([1, 2, 3, 4]))
+    func testReceiveFailureAfterStartedReconnectsWithoutWaitingForMoreAudio() async throws {
+        let input = XFYunTrackInputStream(bufferLimit: 16)
+        let firstSocket = ScriptedWebSocket(receiveSteps: [.started, .failure])
+        let secondSocket = ScriptedWebSocket(
+            receiveSteps: [.started],
+            onResume: { input.finish() }
+        )
+        let factory = ScriptedWebSocketFactory(sockets: [firstSocket, secondSocket])
+        input.send(Data([1, 2, 3, 4]))
 
+        await Self.runWorker(input: input, factory: factory)
+
+        let createdCount = await factory.createdCount
+        XCTAssertEqual(createdCount, 2)
+    }
+
+    func testSendFailureCancelsSocketBeforeAwaitingBlockedReceiver() async throws {
+        let input = XFYunTrackInputStream(bufferLimit: 16)
+        let firstSocket = ScriptedWebSocket(
+            receiveSteps: [.started],
+            dataSendFailures: 1
+        )
+        let secondSocket = ScriptedWebSocket(
+            receiveSteps: [.started],
+            onResume: { input.finish() }
+        )
+        let factory = ScriptedWebSocketFactory(sockets: [firstSocket, secondSocket])
+        input.send(Data([1, 2, 3, 4]))
+
+        await Self.runWorker(input: input, factory: factory)
+
+        let createdCount = await factory.createdCount
+        let firstCancelCount = await firstSocket.cancelCount
+        XCTAssertEqual(createdCount, 2)
+        XCTAssertGreaterThanOrEqual(firstCancelCount, 1)
+    }
+
+    func testTrackWorkerStopsAfterTenConsecutiveConnectionFailures() async throws {
+        let sockets = (1...10).map { _ in ScriptedWebSocket(receiveSteps: [.failure]) }
+        let factory = ScriptedWebSocketFactory(sockets: sockets)
+        let input = XFYunTrackInputStream(bufferLimit: 16)
+        input.send(Data([1, 2, 3, 4]))
+
+        await Self.runWorker(input: input, factory: factory)
+
+        let createdCount = await factory.createdCount
+        XCTAssertEqual(createdCount, 10)
+    }
+
+    func testFinishRequestPreventsAnotherConnectionAttempt() async throws {
+        let socket = ScriptedWebSocket(receiveSteps: [.failure])
+        let factory = ScriptedWebSocketFactory(sockets: [socket])
+        let input = XFYunTrackInputStream(bufferLimit: 16)
+        let controller = XFYunConnectionController()
+        input.send(Data([1, 2, 3, 4]))
+
+        await Self.runWorker(
+            input: input,
+            factory: factory,
+            controller: controller,
+            sleep: { _ in await controller.requestFinish() }
+        )
+
+        let createdCount = await factory.createdCount
+        XCTAssertEqual(createdCount, 1)
+    }
+
+    func testFinishRequestCanCancelAConnectionBlockedBeforeStarted() async throws {
+        let socket = ScriptedWebSocket(receiveSteps: [])
+        let factory = ScriptedWebSocketFactory(sockets: [socket])
+        let input = XFYunTrackInputStream(bufferLimit: 16)
+        let controller = XFYunConnectionController()
+        input.send(Data([1, 2, 3, 4]))
+        let worker = Task { @Sendable in
+            await Self.runWorker(input: input, factory: factory, controller: controller)
+        }
+
+        while await socket.resumeCount == 0 {
+            await Task.yield()
+        }
+        await controller.requestFinish()
+        await controller.cancelCurrent()
+        await worker.value
+
+        let cancelCount = await socket.cancelCount
+        XCTAssertGreaterThanOrEqual(cancelCount, 1)
+    }
+
+    func testBufferedChunkRetainsAbsoluteTimelineAfterEviction() async throws {
+        let input = XFYunTrackInputStream(bufferLimit: 1)
+        input.send(Data(repeating: 0, count: 32_000))
+        input.send(Data([1, 2, 3, 4]))
+        var iterator = input.stream.makeAsyncIterator()
+
+        guard case let .audio(chunk) = await iterator.next() else {
+            return XCTFail("Expected an audio chunk")
+        }
+
+        XCTAssertEqual(chunk.startByteOffset, 32_000)
+        XCTAssertEqual(chunk.startTime, 1, accuracy: 0.000_1)
+    }
+
+    private static func runWorker(
+        input: XFYunTrackInputStream,
+        factory: ScriptedWebSocketFactory,
+        controller: XFYunConnectionController = XFYunConnectionController(),
+        sleep: @escaping XFYunTrackWorker.Sleeper = { _ in }
+    ) async {
         let journalURL = FileManager.default.temporaryDirectory
             .appending(path: UUID().uuidString)
             .appendingPathExtension("jsonl")
@@ -49,22 +137,12 @@ final class XFYunRealtimeTranscriberTests: XCTestCase {
             credentials: .init(appID: "test-app", appKey: "test-key"),
             speaker: .me,
             sessionStartedAt: .now,
-            stream: pair.stream,
+            input: input,
             journal: TranscriptJournal(url: journalURL),
+            controller: controller,
             socketFactory: { _ in try await factory.next() },
-            sleep: { _ in }
+            sleep: sleep
         )
-
-        let createdCount = await factory.createdCount
-        XCTAssertEqual(createdCount, 10)
-    }
-
-    func testStreamClockKeepsReconnectedResultsOnOriginalTimeline() {
-        var clock = XFYunStreamClock()
-
-        clock.recordSentByteCount(32_000)
-
-        XCTAssertEqual(clock.nextConnectionOffset, 1, accuracy: 0.000_1)
     }
 }
 
@@ -84,36 +162,64 @@ private actor ScriptedWebSocketFactory {
 }
 
 private actor ScriptedWebSocket: XFYunWebSocketClient {
-    enum Step {
-        case message(URLSessionWebSocketTask.Message)
+    enum ReceiveStep {
+        case started
         case failure
     }
 
-    private var steps: [Step]
+    private var receiveSteps: [ReceiveStep]
+    private var remainingDataSendFailures: Int
     private var sentMessages: [URLSessionWebSocketTask.Message] = []
+    private var blockedReceivers: [CheckedContinuation<URLSessionWebSocketTask.Message, Error>] = []
+    private let onResume: (@Sendable () -> Void)?
+    private(set) var cancelCount = 0
+    private(set) var resumeCount = 0
 
-    init(steps: [Step]) {
-        self.steps = steps
+    init(
+        receiveSteps: [ReceiveStep],
+        dataSendFailures: Int = 0,
+        onResume: (@Sendable () -> Void)? = nil
+    ) {
+        self.receiveSteps = receiveSteps
+        remainingDataSendFailures = dataSendFailures
+        self.onResume = onResume
     }
 
-    func resume() async {}
+    func resume() async {
+        resumeCount += 1
+        onResume?()
+    }
 
     func send(_ message: URLSessionWebSocketTask.Message) async throws {
+        if case .data = message, remainingDataSendFailures > 0 {
+            remainingDataSendFailures -= 1
+            throw TestFailure.disconnected
+        }
         sentMessages.append(message)
     }
 
     func receive() async throws -> URLSessionWebSocketTask.Message {
-        if !steps.isEmpty {
-            switch steps.removeFirst() {
-            case let .message(message): return message
-            case .failure: throw TestFailure.disconnected
+        if !receiveSteps.isEmpty {
+            switch receiveSteps.removeFirst() {
+            case .started:
+                return .string(#"{"action":"started","code":"0","data":""}"#)
+            case .failure:
+                throw TestFailure.disconnected
             }
         }
-        try await Task.sleep(for: .seconds(60))
-        throw CancellationError()
+        return try await withCheckedThrowingContinuation { continuation in
+            blockedReceivers.append(continuation)
+        }
     }
 
-    func cancel() async {}
+    func cancel() async {
+        cancelCount += 1
+        let receivers = blockedReceivers
+        blockedReceivers.removeAll()
+        for receiver in receivers {
+            receiver.resume(throwing: TestFailure.disconnected)
+        }
+    }
 
     var sentDataMessages: [Data] {
         sentMessages.compactMap {

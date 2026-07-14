@@ -18,8 +18,9 @@ The current transcriber creates one WebSocket per track and exits its worker aft
 - No new alert, banner, or recording failure is presented.
 - Audio recording and export continue regardless of transcription state.
 - Each track buffers the newest 2,048 chunks while reconnecting. A chunk whose send fails remains pending for the next connection.
-- Each replacement connection adds the duration of audio already sent on that track to XFYun's connection-local timestamps, keeping transcript entries on the original recording timeline.
-- Finishing a recording stops retries, sends the XFYun end marker when connected, and cancels remaining work after the existing grace period.
+- Every audio chunk carries its absolute PCM byte offset. If the bounded buffer evicts audio, the next connection uses that absolute offset and transcript entries stay on the original recording timeline.
+- A receive failure injects a connection-scoped control event into the same input stream, waking a worker even when no new audio is arriving.
+- Finishing a recording immediately prevents new connection attempts, sends the XFYun end marker when connected, then closes active sockets and waits for both workers after the existing grace period.
 
 ## Structure
 
@@ -31,6 +32,7 @@ The current transcriber creates one WebSocket per track and exits its worker aft
 - Unit-test `started` resetting the consecutive failure counter.
 - Unit-test the worker reconnecting after a transport failure and preserving the pending audio chunk.
 - Unit-test the worker creating exactly ten failed connections before stopping.
-- Unit-test the audio byte clock used to preserve transcript timestamps across replacement connections.
+- Unit-test the absolute PCM byte offsets used to preserve transcript timestamps across replacement connections and buffer eviction.
+- Unit-test post-start receive failure, a receive blocked until socket cancellation, buffer eviction, and finish during retry/initial connection.
 - Run the complete Swift test suite.
 - Perform a real short recording with the local proxy path unavailable, restore connectivity, and verify that a transcript journal is created after reconnection.
