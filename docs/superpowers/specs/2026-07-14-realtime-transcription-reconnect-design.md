@@ -18,6 +18,7 @@ The current transcriber creates one WebSocket per track and exits its worker aft
 - No new alert, banner, or recording failure is presented.
 - Audio recording and export continue regardless of transcription state.
 - Each track buffers the newest 2,048 chunks while reconnecting. A chunk whose send fails remains pending for the next connection.
+- Each replacement connection adds the duration of audio already sent on that track to XFYun's connection-local timestamps, keeping transcript entries on the original recording timeline.
 - Finishing a recording stops retries, sends the XFYun end marker when connected, and cancels remaining work after the existing grace period.
 
 ## Structure
@@ -29,6 +30,7 @@ The current transcriber creates one WebSocket per track and exits its worker aft
 - Unit-test attempts one through nine returning a one-second retry and attempt ten returning give-up.
 - Unit-test `started` resetting the consecutive failure counter.
 - Unit-test the worker reconnecting after a transport failure and preserving the pending audio chunk.
+- Unit-test the worker creating exactly ten failed connections before stopping.
+- Unit-test the audio byte clock used to preserve transcript timestamps across replacement connections.
 - Run the complete Swift test suite.
 - Perform a real short recording with the local proxy path unavailable, restore connectivity, and verify that a transcript journal is created after reconnection.
-
