@@ -145,6 +145,19 @@ final class XFYunRealtimeTranscriberTests: XCTestCase {
         XCTAssertEqual(bufferedChunk.data, chunk)
     }
 
+    func testReplayWindowIsBoundedAndTrimsAcknowledgedPrefix() {
+        var window = XFYunReplayWindow(maximumByteCount: 4)
+        window.append(.init(data: Data([0, 1, 2, 3, 4, 5]), startByteOffset: 0))
+
+        XCTAssertEqual(window.chunks.map(\.startByteOffset), [2])
+        XCTAssertEqual(window.chunks.map(\.data), [Data([2, 3, 4, 5])])
+
+        window.acknowledge(through: 4)
+
+        XCTAssertEqual(window.chunks.map(\.startByteOffset), [4])
+        XCTAssertEqual(window.chunks.map(\.data), [Data([4, 5])])
+    }
+
     private static func runWorker(
         input: XFYunTrackInputStream,
         factory: ScriptedWebSocketFactory,

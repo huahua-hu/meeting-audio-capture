@@ -19,7 +19,7 @@ The current transcriber creates one WebSocket per track and exits its worker aft
 - Audio recording and export continue regardless of transcription state.
 - Each track buffers the newest 2,048 chunks while reconnecting. Connection control events use a separate priority queue and never evict buffered audio.
 - Every audio chunk carries its absolute PCM byte offset. Piecewise timestamp mapping preserves the original recording timeline even if the bounded buffer evicts audio.
-- Audio sent after the latest final recognition result remains in a replay window. A replacement connection replays that unconfirmed audio before consuming newly buffered chunks.
+- Audio sent after the latest final recognition result remains in a replay window capped at 30 seconds per track. A replacement connection replays that unconfirmed audio before consuming newly buffered chunks; acknowledged prefixes are trimmed at PCM sample boundaries.
 - A receive failure injects a connection-scoped control event, waking a worker even when no new audio is arriving.
 - Finishing a recording immediately prevents new connection attempts, sends the XFYun end marker when connected, then closes active sockets and waits for both workers after the existing grace period.
 

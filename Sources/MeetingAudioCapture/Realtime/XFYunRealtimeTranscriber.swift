@@ -37,6 +37,56 @@ struct XFYunAudioChunk: Sendable {
     var startTime: TimeInterval {
         TimeInterval(startByteOffset) / TimeInterval(Self.bytesPerSecond)
     }
+
+    func suffix(after byteOffset: Int) -> XFYunAudioChunk? {
+        guard byteOffset < endByteOffset else { return nil }
+        guard byteOffset > startByteOffset else { return self }
+        let requestedDrop = byteOffset - startByteOffset
+        let alignedDrop = min(data.count, (requestedDrop + 1) / 2 * 2)
+        guard alignedDrop < data.count else { return nil }
+        return .init(
+            data: Data(data.dropFirst(alignedDrop)),
+            startByteOffset: startByteOffset + alignedDrop
+        )
+    }
+}
+
+struct XFYunReplayWindow: Sendable {
+    static let defaultMaximumByteCount = XFYunAudioChunk.bytesPerSecond * 30
+
+    private let maximumByteCount: Int
+    private(set) var chunks: [XFYunAudioChunk] = []
+
+    init(maximumByteCount: Int = defaultMaximumByteCount) {
+        precondition(maximumByteCount > 0)
+        self.maximumByteCount = maximumByteCount
+    }
+
+    mutating func append(_ chunk: XFYunAudioChunk) {
+        chunks.append(chunk)
+        trimToMaximumSize()
+    }
+
+    mutating func acknowledge(through byteOffset: Int) {
+        chunks = chunks.compactMap { $0.suffix(after: byteOffset) }
+    }
+
+    private mutating func trimToMaximumSize() {
+        var overflow = chunks.reduce(0) { $0 + $1.data.count } - maximumByteCount
+        while overflow > 0, let first = chunks.first {
+            if overflow >= first.data.count {
+                overflow -= first.data.count
+                chunks.removeFirst()
+            } else {
+                if let suffix = first.suffix(after: first.startByteOffset + overflow) {
+                    chunks[0] = suffix
+                } else {
+                    chunks.removeFirst()
+                }
+                overflow = 0
+            }
+        }
+    }
 }
 
 enum XFYunTrackInput: Sendable {
@@ -172,29 +222,65 @@ private actor XFYunConnectionTimeline {
     private struct Segment {
         let localStartByteOffset: Int
         let originalStartByteOffset: Int
-        let byteCount: Int
+        var byteCount: Int
     }
 
     private var segments: [Segment] = []
     private var sentByteCount = 0
+    private var preparedSegment: Segment?
+    private var preparationWaiters: [CheckedContinuation<Void, Never>] = []
     private(set) var acknowledgedByteOffset: Int?
 
-    func recordSent(_ chunk: XFYunAudioChunk) {
-        segments.append(.init(
+    func prepareToSend(_ chunk: XFYunAudioChunk) {
+        precondition(preparedSegment == nil)
+        preparedSegment = .init(
             localStartByteOffset: sentByteCount,
             originalStartByteOffset: chunk.startByteOffset,
             byteCount: chunk.data.count
-        ))
-        sentByteCount += chunk.data.count
+        )
     }
 
-    func adjusted(start: TimeInterval, end: TimeInterval) -> (TimeInterval, TimeInterval) {
-        (map(time: start, isEnd: false), map(time: end, isEnd: true))
+    func commitPreparedSend() {
+        guard let preparedSegment else { return }
+        if let lastIndex = segments.indices.last,
+           segments[lastIndex].localStartByteOffset + segments[lastIndex].byteCount
+                == preparedSegment.localStartByteOffset,
+           segments[lastIndex].originalStartByteOffset + segments[lastIndex].byteCount
+                == preparedSegment.originalStartByteOffset {
+            segments[lastIndex].byteCount += preparedSegment.byteCount
+        } else {
+            segments.append(preparedSegment)
+        }
+        sentByteCount += preparedSegment.byteCount
+        finishPreparation()
     }
 
-    func acknowledge(end: TimeInterval) {
+    func rollbackPreparedSend() {
+        guard preparedSegment != nil else { return }
+        finishPreparation()
+    }
+
+    func adjusted(start: TimeInterval, end: TimeInterval) async -> (TimeInterval, TimeInterval) {
+        await waitForPreparedSend()
+        return (map(time: start, isEnd: false), map(time: end, isEnd: true))
+    }
+
+    func acknowledge(end: TimeInterval) async {
+        await waitForPreparedSend()
         let mapped = mapToByteOffset(time: end, isEnd: true)
         acknowledgedByteOffset = max(acknowledgedByteOffset ?? 0, mapped)
+    }
+
+    private func waitForPreparedSend() async {
+        guard preparedSegment != nil else { return }
+        await withCheckedContinuation { preparationWaiters.append($0) }
+    }
+
+    private func finishPreparation() {
+        preparedSegment = nil
+        let waiters = preparationWaiters
+        preparationWaiters.removeAll()
+        for waiter in waiters { waiter.resume() }
     }
 
     private func map(time: TimeInterval, isEnd: Bool) -> TimeInterval {
@@ -254,7 +340,7 @@ enum XFYunTrackWorker {
             var socket: (any XFYunWebSocketClient)?
             var receiver: Task<Void, Never>?
             let timeline = XFYunConnectionTimeline()
-            var inFlight: [XFYunAudioChunk] = []
+            var inFlight = XFYunReplayWindow()
 
             do {
                 let url = try XFYunAuthSigner().signedURL(
@@ -303,15 +389,21 @@ enum XFYunTrackWorker {
                         case let .progress(progressID):
                             if progressID == connectionID,
                                let acknowledged = await timeline.acknowledgedByteOffset {
-                                inFlight.removeAll { $0.endByteOffset <= acknowledged }
+                                inFlight.acknowledge(through: acknowledged)
                             }
                             continue
                         }
                     }
 
                     guard let chunk = pendingChunk else { break connectionLoop }
-                    try await connection.send(.data(chunk.data))
-                    await timeline.recordSent(chunk)
+                    await timeline.prepareToSend(chunk)
+                    do {
+                        try await connection.send(.data(chunk.data))
+                    } catch {
+                        await timeline.rollbackPreparedSend()
+                        throw error
+                    }
+                    await timeline.commitPreparedSend()
                     inFlight.append(chunk)
                     pendingChunk = nil
                 }
@@ -332,10 +424,8 @@ enum XFYunTrackWorker {
                 }
 
                 let acknowledged = await timeline.acknowledgedByteOffset
-                var queued = inFlight.filter {
-                    guard let acknowledged else { return true }
-                    return $0.endByteOffset > acknowledged
-                }
+                if let acknowledged { inFlight.acknowledge(through: acknowledged) }
+                var queued = inFlight.chunks
                 if let pendingChunk { queued.append(pendingChunk) }
                 queued.append(contentsOf: replayBacklog)
                 pendingChunk = queued.first
