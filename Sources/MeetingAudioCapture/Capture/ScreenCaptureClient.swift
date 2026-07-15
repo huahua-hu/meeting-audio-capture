@@ -90,7 +90,8 @@ final class ScreenCaptureClient: NSObject, CaptureClient, SCStreamOutput, SCStre
             )
             let effectiveMicrophoneID = Self.effectiveMicrophoneID(
                 requestedDeviceID: microphoneDeviceID,
-                currentDefaultDeviceID: defaultInputMonitor.currentDeviceID()
+                currentDefaultDeviceID: defaultInputMonitor.currentDeviceID(),
+                strategy: strategy
             )
             let content = try await SCShareableContent.current
             guard let display = content.displays.first else {
@@ -133,20 +134,25 @@ final class ScreenCaptureClient: NSObject, CaptureClient, SCStreamOutput, SCStre
                 }
             }
 
-            let routeController = MicrophoneRouteController(
-                requestedDeviceID: microphoneDeviceID,
-                initialDefaultDeviceID: effectiveMicrophoneID
-            ) { [weak self] deviceID in
-                guard let self else { return }
-                try await self.switchMicrophone(to: deviceID, strategy: strategy)
+            if Self.shouldMonitorDefaultInput(
+                strategy: strategy,
+                requestedDeviceID: microphoneDeviceID
+            ) {
+                let routeController = MicrophoneRouteController(
+                    requestedDeviceID: microphoneDeviceID,
+                    initialDefaultDeviceID: effectiveMicrophoneID
+                ) { [weak self] deviceID in
+                    guard let self else { return }
+                    try await self.legacyMicrophone.switchDevice(to: deviceID)
+                }
+                let routing = MicrophoneRoutingSession(
+                    requestedDeviceID: microphoneDeviceID,
+                    monitor: defaultInputMonitor,
+                    routeController: routeController
+                )
+                lock.withLock { microphoneRouting = routing }
+                routing.start()
             }
-            let routing = MicrophoneRoutingSession(
-                requestedDeviceID: microphoneDeviceID,
-                monitor: defaultInputMonitor,
-                routeController: routeController
-            )
-            lock.withLock { microphoneRouting = routing }
-            routing.start()
         } catch let failure as CaptureFailure {
             await cleanUpFailedStart()
             throw failure
@@ -232,9 +238,22 @@ final class ScreenCaptureClient: NSObject, CaptureClient, SCStreamOutput, SCStre
 
     static func effectiveMicrophoneID(
         requestedDeviceID: String?,
-        currentDefaultDeviceID: String?
+        currentDefaultDeviceID: String?,
+        strategy: MicrophoneCaptureStrategy
     ) -> String? {
-        requestedDeviceID ?? currentDefaultDeviceID
+        switch strategy {
+        case .screenCaptureKit:
+            return requestedDeviceID
+        case .avCaptureSession:
+            return requestedDeviceID ?? currentDefaultDeviceID
+        }
+    }
+
+    static func shouldMonitorDefaultInput(
+        strategy: MicrophoneCaptureStrategy,
+        requestedDeviceID: String?
+    ) -> Bool {
+        strategy == .avCaptureSession && requestedDeviceID == nil
     }
 
     static func makeConfiguration(
@@ -254,28 +273,6 @@ final class ScreenCaptureClient: NSObject, CaptureClient, SCStreamOutput, SCStre
         configuration.height = 2
         configuration.minimumFrameInterval = CMTime(value: 1, timescale: 1)
         return configuration
-    }
-
-    private func switchMicrophone(
-        to deviceID: String,
-        strategy: MicrophoneCaptureStrategy
-    ) async throws {
-        switch strategy {
-        case .avCaptureSession:
-            try await legacyMicrophone.switchDevice(to: deviceID)
-        case .screenCaptureKit:
-            guard #available(macOS 15.0, *) else {
-                throw CaptureFailure.setupFailed("ScreenCaptureKit microphone switching requires macOS 15.")
-            }
-            guard let stream = lock.withLock({ didStop ? nil : captureStream }) else {
-                throw CaptureFailure.setupFailed("The capture stream is no longer running.")
-            }
-            let configuration = Self.makeConfiguration(
-                strategy: strategy,
-                microphoneDeviceID: deviceID
-            )
-            try await stream.updateConfiguration(configuration)
-        }
     }
 
     private func cleanUpFailedStart() async {

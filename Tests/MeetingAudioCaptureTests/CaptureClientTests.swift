@@ -3,11 +3,22 @@ import Foundation
 import XCTest
 
 final class CaptureClientTests: XCTestCase {
-    func testSystemDefaultUsesCurrentDeviceID() {
+    func testScreenCaptureKitSystemDefaultRemainsUnspecified() {
+        XCTAssertNil(
+            ScreenCaptureClient.effectiveMicrophoneID(
+                requestedDeviceID: nil,
+                currentDefaultDeviceID: "headset",
+                strategy: .screenCaptureKit
+            )
+        )
+    }
+
+    func testLegacySystemDefaultUsesCurrentDeviceID() {
         XCTAssertEqual(
             ScreenCaptureClient.effectiveMicrophoneID(
                 requestedDeviceID: nil,
-                currentDefaultDeviceID: "headset"
+                currentDefaultDeviceID: "headset",
+                strategy: .avCaptureSession
             ),
             "headset"
         )
@@ -17,9 +28,28 @@ final class CaptureClientTests: XCTestCase {
         XCTAssertEqual(
             ScreenCaptureClient.effectiveMicrophoneID(
                 requestedDeviceID: "usb-mic",
-                currentDefaultDeviceID: "headset"
+                currentDefaultDeviceID: "headset",
+                strategy: .screenCaptureKit
             ),
             "usb-mic"
+        )
+    }
+
+    func testScreenCaptureKitSystemDefaultUsesNativeRouting() {
+        XCTAssertFalse(
+            ScreenCaptureClient.shouldMonitorDefaultInput(
+                strategy: .screenCaptureKit,
+                requestedDeviceID: nil
+            )
+        )
+    }
+
+    func testLegacySystemDefaultUsesApplicationRouting() {
+        XCTAssertTrue(
+            ScreenCaptureClient.shouldMonitorDefaultInput(
+                strategy: .avCaptureSession,
+                requestedDeviceID: nil
+            )
         )
     }
 
