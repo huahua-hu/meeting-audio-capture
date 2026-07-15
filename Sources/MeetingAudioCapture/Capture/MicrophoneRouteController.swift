@@ -11,6 +11,7 @@ actor MicrophoneRouteController {
     private var targetDeviceID: String?
     private var generation = 0
     private var isStopped = false
+    private var retryTask: Task<Void, Never>?
 
     init(
         requestedDeviceID: String?,
@@ -30,29 +31,56 @@ actor MicrophoneRouteController {
         guard followsSystemDefault,
               !isStopped,
               let deviceID,
-              deviceID != activeDeviceID,
               deviceID != targetDeviceID else { return }
 
+        if deviceID == activeDeviceID {
+            guard targetDeviceID != nil else { return }
+            cancelPendingWork()
+            return
+        }
+
+        cancelPendingWork()
         targetDeviceID = deviceID
-        generation += 1
         let updateGeneration = generation
 
-        while !isStopped, generation == updateGeneration {
-            do {
-                try await applyDevice(deviceID)
-                guard !isStopped, generation == updateGeneration else { return }
-                activeDeviceID = deviceID
-                targetDeviceID = nil
+        let worker = Task { [weak self, applyDevice, retryDelay] in
+            while !Task.isCancelled {
+                do {
+                    try await applyDevice(deviceID)
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    await retryDelay()
+                    continue
+                }
+
+                guard !Task.isCancelled else { return }
+                await self?.didApply(deviceID, generation: updateGeneration)
                 return
-            } catch {
-                await retryDelay()
             }
         }
+        retryTask = worker
+        await worker.value
     }
 
     func stop() {
         isStopped = true
+        cancelPendingWork()
+    }
+
+    private func cancelPendingWork() {
         generation += 1
         targetDeviceID = nil
+        retryTask?.cancel()
+        retryTask = nil
+    }
+
+    private func didApply(_ deviceID: String, generation: Int) {
+        guard !isStopped,
+              generation == self.generation,
+              targetDeviceID == deviceID else { return }
+
+        activeDeviceID = deviceID
+        targetDeviceID = nil
+        retryTask = nil
     }
 }
