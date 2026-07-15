@@ -64,8 +64,8 @@ final class BundleConfigurationTests: XCTestCase {
             PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any]
         )
 
-        XCTAssertEqual(plist["CFBundleShortVersionString"] as? String, "0.3.1")
-        XCTAssertEqual(plist["CFBundleVersion"] as? String, "4")
+        XCTAssertEqual(plist["CFBundleShortVersionString"] as? String, "0.3.2")
+        XCTAssertEqual(plist["CFBundleVersion"] as? String, "5")
     }
 
     func testMakefileBuildsNamedMacOS13Arm64Artifact() throws {
@@ -77,7 +77,7 @@ final class BundleConfigurationTests: XCTestCase {
         XCTAssertTrue(makefile.contains("dmg-macos13:"))
         XCTAssertTrue(makefile.contains("--triple arm64-apple-macosx13.0"))
         XCTAssertTrue(makefile.contains("MACOS13_APP_DIR := .build/macos13/$(APP_NAME).app"))
-        XCTAssertTrue(makefile.contains("MeetingAudioCapture-0.3.1-macos13-arm64.dmg"))
+        XCTAssertTrue(makefile.contains("MeetingAudioCapture-0.3.2-macos13-arm64.dmg"))
     }
 
     func testSourceDoesNotEmbedXFYunCredentialDefaults() throws {
