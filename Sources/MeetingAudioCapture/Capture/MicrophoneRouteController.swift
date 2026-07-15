@@ -8,10 +8,10 @@ actor MicrophoneRouteController {
     private let retryDelay: RetryDelay
     private let applyDevice: ApplyDevice
     private var activeDeviceID: String?
-    private var targetDeviceID: String?
-    private var generation = 0
+    private var desiredDeviceID: String?
     private var isStopped = false
-    private var retryTask: Task<Void, Never>?
+    private var routeWorkerTask: Task<Void, Never>?
+    private var retryDelayTask: Task<Void, Never>?
 
     init(
         requestedDeviceID: String?,
@@ -30,57 +30,60 @@ actor MicrophoneRouteController {
     func defaultDeviceDidChange(to deviceID: String?) async {
         guard followsSystemDefault,
               !isStopped,
-              let deviceID,
-              deviceID != targetDeviceID else { return }
+              let deviceID else { return }
 
-        if deviceID == activeDeviceID {
-            guard targetDeviceID != nil else { return }
-            cancelPendingWork()
+        if deviceID == activeDeviceID, desiredDeviceID == nil {
             return
         }
 
-        cancelPendingWork()
-        targetDeviceID = deviceID
-        let updateGeneration = generation
+        desiredDeviceID = deviceID
+        retryDelayTask?.cancel()
 
-        let worker = Task { [weak self, applyDevice, retryDelay] in
-            while !Task.isCancelled {
-                do {
-                    try await applyDevice(deviceID)
-                } catch {
-                    guard !Task.isCancelled else { return }
-                    await retryDelay()
-                    continue
-                }
-
-                guard !Task.isCancelled else { return }
-                await self?.didApply(deviceID, generation: updateGeneration)
-                return
-            }
+        let worker: Task<Void, Never>
+        if let routeWorkerTask {
+            worker = routeWorkerTask
+        } else {
+            worker = Task { await runRouteWorker() }
+            routeWorkerTask = worker
         }
-        retryTask = worker
+
         await worker.value
     }
 
-    func stop() {
+    func stop() async {
         isStopped = true
-        cancelPendingWork()
+        desiredDeviceID = nil
+        retryDelayTask?.cancel()
+        await routeWorkerTask?.value
     }
 
-    private func cancelPendingWork() {
-        generation += 1
-        targetDeviceID = nil
-        retryTask?.cancel()
-        retryTask = nil
-    }
+    private func runRouteWorker() async {
+        while !isStopped, let deviceID = desiredDeviceID {
+            if deviceID == activeDeviceID {
+                desiredDeviceID = nil
+                break
+            }
 
-    private func didApply(_ deviceID: String, generation: Int) {
-        guard !isStopped,
-              generation == self.generation,
-              targetDeviceID == deviceID else { return }
+            do {
+                try await applyDevice(deviceID)
+                activeDeviceID = deviceID
 
-        activeDeviceID = deviceID
-        targetDeviceID = nil
-        retryTask = nil
+                if desiredDeviceID == deviceID {
+                    desiredDeviceID = nil
+                }
+            } catch {
+                guard !isStopped else { break }
+
+                let delay = Task { [retryDelay] in
+                    await retryDelay()
+                }
+                retryDelayTask = delay
+                await delay.value
+                retryDelayTask = nil
+            }
+        }
+
+        routeWorkerTask = nil
+        retryDelayTask = nil
     }
 }

@@ -48,6 +48,37 @@ final class MicrophoneRouteControllerTests: XCTestCase {
         XCTAssertEqual(deviceIDs, ["headset", "headset"])
     }
 
+    func testRapidChangesApplySeriallyAndFinishOnNewestDevice() async {
+        let secondApplyStarted = expectation(description: "second apply starts")
+        secondApplyStarted.isInverted = true
+        let recorder = SuspendedRouteApplyRecorder(
+            secondApplyStarted: secondApplyStarted
+        )
+        let controller = MicrophoneRouteController(
+            requestedDeviceID: nil,
+            initialDefaultDeviceID: "built-in",
+            retryDelay: {},
+            applyDevice: { try await recorder.apply($0) }
+        )
+
+        let firstUpdate = Task {
+            await controller.defaultDeviceDidChange(to: "headset")
+        }
+        await recorder.waitUntilFirstApplyStarts()
+        let secondUpdate = Task {
+            await controller.defaultDeviceDidChange(to: "usb-mic")
+        }
+
+        await fulfillment(of: [secondApplyStarted], timeout: 0.1)
+        await recorder.resumeFirstApply()
+        await firstUpdate.value
+        await secondUpdate.value
+
+        let result = await recorder.result()
+        XCTAssertEqual(result.deviceIDs, ["headset", "usb-mic"])
+        XCTAssertEqual(result.maximumInFlightCount, 1)
+    }
+
     func testReturningToActiveDefaultCancelsPendingDifferentTarget() async {
         let recorder = RouteApplyRecorder(failuresRemaining: 1)
         let retryDelay = RetryDelayGate()
@@ -133,6 +164,56 @@ private actor RouteApplyRecorder {
     }
 
     func deviceIDs() -> [String] { applied }
+}
+
+private actor SuspendedRouteApplyRecorder {
+    private let secondApplyStarted: XCTestExpectation
+    private var applied: [String] = []
+    private var inFlightCount = 0
+    private var maximumInFlightCount = 0
+    private var firstApplyContinuation: CheckedContinuation<Void, Never>?
+    private var firstApplyStartedContinuation: CheckedContinuation<Void, Never>?
+
+    init(secondApplyStarted: XCTestExpectation) {
+        self.secondApplyStarted = secondApplyStarted
+    }
+
+    func apply(_ deviceID: String) async throws {
+        applied.append(deviceID)
+        inFlightCount += 1
+        maximumInFlightCount = max(maximumInFlightCount, inFlightCount)
+
+        if applied.count == 1 {
+            firstApplyStartedContinuation?.resume()
+            firstApplyStartedContinuation = nil
+            await withCheckedContinuation { continuation in
+                firstApplyContinuation = continuation
+            }
+        } else if inFlightCount > 1 {
+            secondApplyStarted.fulfill()
+        }
+
+        inFlightCount -= 1
+    }
+
+    func waitUntilFirstApplyStarts() async {
+        if firstApplyContinuation != nil {
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            firstApplyStartedContinuation = continuation
+        }
+    }
+
+    func resumeFirstApply() {
+        firstApplyContinuation?.resume()
+        firstApplyContinuation = nil
+    }
+
+    func result() -> (deviceIDs: [String], maximumInFlightCount: Int) {
+        (applied, maximumInFlightCount)
+    }
 }
 
 private actor RetryDelayGate {
